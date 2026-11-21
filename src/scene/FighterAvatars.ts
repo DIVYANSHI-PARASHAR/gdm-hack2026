@@ -138,12 +138,7 @@ export function bindOpponentAvatar(model: THREE.Group, rig: KaiBrawlerRig): () =
 }
 
 /** Bake just the avatar's arms in a closed-fist pose for the first-person camera. */
-export interface FirstPersonArm {
-  mesh: THREE.Mesh;
-  updateReach(extension: number): void;
-}
-
-export function buildMichelleView(model: THREE.Group): [FirstPersonArm, FirstPersonArm] {
+export function buildMichelleView(model: THREE.Group): [THREE.Mesh, THREE.Mesh] {
   let body: THREE.SkinnedMesh | undefined;
   model.traverse((object) => {
     if (object instanceof THREE.SkinnedMesh) body = object;
@@ -160,7 +155,7 @@ export function buildMichelleView(model: THREE.Group): [FirstPersonArm, FirstPer
   const worldVertex = new THREE.Vector3();
   const localVertex = new THREE.Vector3();
 
-  function armView(side: 'Left' | 'Right'): FirstPersonArm {
+  function armView(side: 'Left' | 'Right'): THREE.Mesh {
     const frame = handFrame(model, side).invert();
     closeHand(model, side);
     model.updateMatrixWorld(true);
@@ -211,39 +206,7 @@ export function buildMichelleView(model: THREE.Group): [FirstPersonArm, FirstPer
     const length = findBone(model, side + 'Hand').getWorldPosition(new THREE.Vector3())
       .distanceTo(findBone(model, side + 'ForeArm').getWorldPosition(new THREE.Vector3()));
     arm.scale.setScalar(0.34 / length);
-    arm.frustumCulled = false;
-
-    const attribute = geometry.getAttribute('position');
-    geometry.computeBoundingBox();
-    const upperArmEnd = geometry.boundingBox!.max.z;
-    const shoulder = new THREE.Vector3(side === 'Left' ? -0.42 : 0.42, -0.51, -0.1);
-    const cameraToHand = new THREE.Quaternion();
-    const stretch = new THREE.Vector3();
-    let wasExtended = false;
-    return {
-      mesh: arm,
-      updateReach(extension) {
-        const anchor = arm.parent;
-        if (!(anchor instanceof THREE.Group) || (!wasExtended && extension === 0)) return;
-        wasExtended = extension > 0;
-        // The strike moves the camera-space wrist forward. Keep the near end
-        // of the arm behind the camera frustum so the punch reads as connected.
-        cameraToHand.copy(anchor.quaternion).invert();
-        stretch.copy(shoulder).sub(anchor.position).applyQuaternion(cameraToHand)
-          .divideScalar(arm.scale.x);
-        stretch.z -= upperArmEnd;
-        stretch.multiplyScalar(extension);
-        for (let i = 0; i < attribute.count; i++) {
-          const x = positions[i * 3];
-          const y = positions[i * 3 + 1];
-          const z = positions[i * 3 + 2];
-          const weight = THREE.MathUtils.smoothstep(z, length * 0.8, upperArmEnd);
-          attribute.setXYZ(i, x + stretch.x * weight, y + stretch.y * weight, z + stretch.z * weight);
-        }
-        attribute.needsUpdate = true;
-        geometry.computeVertexNormals();
-      },
-    };
+    return arm;
   }
 
   // Camera-facing anatomical left is screen-left when viewed from behind the avatar.

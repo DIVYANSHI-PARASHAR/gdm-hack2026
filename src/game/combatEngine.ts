@@ -335,6 +335,10 @@ export class CombatEngine {
     return true;
   }
 
+  public isFighting(): boolean {
+    return this.phase === 'FIGHTING';
+  }
+
   public update(dtMs: number, wallClockMs: number = Date.now()): void {
     if (this.phase !== 'FIGHTING') return;
 

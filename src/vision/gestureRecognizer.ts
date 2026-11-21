@@ -11,6 +11,8 @@ export interface CalibrationProfile {
   neutralLeftExt: number;
   neutralRightExt: number;
   calibratedAtMs: number;
+  neutralLeftWristX?: number;
+  neutralRightWristX?: number;
 }
 
 export type ArmPhase = 'GUARD' | 'EXTENDED';
@@ -49,12 +51,16 @@ const PUNCH_RETRACT_RESET_DELTA = 0.12;
 const PUNCH_EXT_VELOCITY_THRESHOLD = 1.35; // units/sec
 const PUNCH_WRIST_SPEED_THRESHOLD = 1.1; // shoulder-widths/sec
 const PUNCH_REFRACTORY_MS = 220;
+const HOOK_MIN_TRAVEL = 0.22; // shoulder widths inward from guard
+const HOOK_MIN_SPEED = 2.0; // shoulder widths per second
 
 interface CalibrationSample {
   centerMx: number;
   shoulderWidth: number;
   leftExt: number;
   rightExt: number;
+  leftWristX: number;
+  rightWristX: number;
 }
 
 export class GestureRecognizer {
@@ -178,6 +184,8 @@ export class GestureRecognizer {
           shoulderWidth: liveShoulderWidth,
           leftExt,
           rightExt,
+          leftWristX: (mLWr.x - mLSh.x) / liveShoulderWidth,
+          rightWristX: (mRWr.x - mRSh.x) / liveShoulderWidth,
         });
       }
 
@@ -198,18 +206,20 @@ export class GestureRecognizer {
           neutralRightExt:
             this.calibSamples.reduce((s, c) => s + c.rightExt, 0) / n,
           calibratedAtMs: timestampMs,
+          neutralLeftWristX: this.calibSamples.reduce((s, c) => s + c.leftWristX, 0) / n,
+          neutralRightWristX: this.calibSamples.reduce((s, c) => s + c.rightWristX, 0) / n,
         };
         this.isCalibrating = false;
         this.prevTimestampMs = timestampMs;
         this.prevLeftExt = leftExt;
         this.prevRightExt = rightExt;
         this.prevLeftWristRel = {
-          x: (mLWr.x - mLSh.x) / liveShoulderWidth,
-          y: (mLWr.y - mLSh.y) / liveShoulderWidth,
+          x: (mLWr.x - mLSh.x) / this.calibration.neutralShoulderWidth,
+          y: (mLWr.y - mLSh.y) / this.calibration.neutralShoulderWidth,
         };
         this.prevRightWristRel = {
-          x: (mRWr.x - mRSh.x) / liveShoulderWidth,
-          y: (mRWr.y - mRSh.y) / liveShoulderWidth,
+          x: (mRWr.x - mRSh.x) / this.calibration.neutralShoulderWidth,
+          y: (mRWr.y - mRSh.y) / this.calibration.neutralShoulderWidth,
         };
       }
 
@@ -265,13 +275,17 @@ export class GestureRecognizer {
 
     const leanVelocity = Math.abs(leanScore - this.prevLeanScore) / dtSec;
     const leftWristRel = {
-      x: (mLWr.x - mLSh.x) / liveShoulderWidth,
-      y: (mLWr.y - mLSh.y) / liveShoulderWidth,
+      x: (mLWr.x - mLSh.x) / this.calibration.neutralShoulderWidth,
+      y: (mLWr.y - mLSh.y) / this.calibration.neutralShoulderWidth,
     };
     const rightWristRel = {
-      x: (mRWr.x - mRSh.x) / liveShoulderWidth,
-      y: (mRWr.y - mRSh.y) / liveShoulderWidth,
+      x: (mRWr.x - mRSh.x) / this.calibration.neutralShoulderWidth,
+      y: (mRWr.y - mRSh.y) / this.calibration.neutralShoulderWidth,
     };
+
+    // Profiles created before hook detection learn the wrist's guard X on the first frame.
+    this.calibration.neutralLeftWristX ??= leftWristRel.x;
+    this.calibration.neutralRightWristX ??= rightWristRel.x;
 
     const leftExtDelta = leftExt - this.calibration.neutralLeftExt;
     const rightExtDelta = rightExt - this.calibration.neutralRightExt;
@@ -282,68 +296,66 @@ export class GestureRecognizer {
       const leftExtVel = (leftExt - this.prevLeftExt) / dtSec;
       const rightExtVel = (rightExt - this.prevRightExt) / dtSec;
 
-      const leftWristSpeed =
-        Math.hypot(
-          leftWristRel.x - this.prevLeftWristRel.x,
-          leftWristRel.y - this.prevLeftWristRel.y
-        ) / dtSec +
-        Math.max(0, leftExtVel) * 0.45;
-
-      const rightWristSpeed =
-        Math.hypot(
-          rightWristRel.x - this.prevRightWristRel.x,
-          rightWristRel.y - this.prevRightWristRel.y
-        ) / dtSec +
-        Math.max(0, rightExtVel) * 0.45;
-
-      // Suppress accidental punch triggers during rapid whole-body sway/lean onset
-      const torsoRapidSway = leanVelocity > 2.9;
-
-      // Update Left Arm Hysteresis (prevents retraction double-triggers)
-      if (this.leftArmPhase === 'EXTENDED') {
-        if (
-          leftExtVel <= 0.15 &&
-          leftExtDelta <= PUNCH_RETRACT_RESET_DELTA &&
-          timestampMs - this.leftLastPunchMs >= PUNCH_REFRACTORY_MS
-        ) {
-          this.leftArmPhase = 'GUARD';
+      const armScore = (
+        side: 'LEFT' | 'RIGHT',
+        current: { x: number; y: number },
+        previous: { x: number; y: number },
+        guardX: number,
+        extension: number,
+        extensionSpeed: number,
+        shoulder: PoseLandmarkPoint,
+        elbow: PoseLandmarkPoint,
+        wrist: PoseLandmarkPoint,
+        visible: boolean,
+      ): number => {
+        const left = side === 'LEFT';
+        const inward = left ? 1 : -1;
+        const dx = current.x - previous.x;
+        const dy = current.y - previous.y;
+        const inwardTravel = inward * (current.x - guardX);
+        const inwardSpeed = inward * dx / dtSec;
+        const lastPunch = left ? this.leftLastPunchMs : this.rightLastPunchMs;
+        if ((left ? this.leftArmPhase : this.rightArmPhase) === 'EXTENDED') {
+          if (timestampMs - lastPunch >= PUNCH_REFRACTORY_MS &&
+              extensionSpeed <= 0.15 && extension <= PUNCH_RETRACT_RESET_DELTA &&
+              inwardTravel <= PUNCH_RETRACT_RESET_DELTA) {
+            if (left) this.leftArmPhase = 'GUARD';
+            else this.rightArmPhase = 'GUARD';
+          }
+          return 0;
         }
-      } else if (
-        !torsoRapidSway &&
-        (lWrist.visibility ?? 1) >= MIN_LANDMARK_CONFIDENCE &&
-        timestampMs - this.leftLastPunchMs >= PUNCH_REFRACTORY_MS &&
-        leftExtDelta >= PUNCH_EXT_DELTA_THRESHOLD &&
-        leftExtVel >= PUNCH_EXT_VELOCITY_THRESHOLD &&
-        leftWristSpeed >= PUNCH_WRIST_SPEED_THRESHOLD
-      ) {
+        if (!visible || timestampMs - lastPunch < PUNCH_REFRACTORY_MS) return 0;
+
+        // A hook can travel across the body with almost no increase in reach or depth.
+        // Require the elbow and wrist to form an inward-facing forearm rather than
+        // treating an arbitrary sideways movement of the hand as a punch.
+        const forearmX = inward * (wrist.x - elbow.x);
+        const elbowHeight = Math.abs(elbow.y - shoulder.y) / liveShoulderWidth;
+        const hook = inwardTravel >= HOOK_MIN_TRAVEL && inwardSpeed >= HOOK_MIN_SPEED &&
+          Math.abs(dx) >= Math.abs(dy) && forearmX >= liveShoulderWidth * 0.18 &&
+          forearmX >= Math.abs(wrist.y - elbow.y) * 0.7 && elbowHeight <= 0.6;
+        if (hook) return inwardSpeed;
+
+        const wristSpeed = Math.hypot(dx, dy) / dtSec + Math.max(0, extensionSpeed) * 0.45;
+        return leanVelocity <= 2.9 && extension >= PUNCH_EXT_DELTA_THRESHOLD &&
+          extensionSpeed >= PUNCH_EXT_VELOCITY_THRESHOLD &&
+          wristSpeed >= PUNCH_WRIST_SPEED_THRESHOLD ? extensionSpeed : 0;
+      };
+
+      const leftScore = armScore('LEFT', leftWristRel, this.prevLeftWristRel,
+        this.calibration.neutralLeftWristX, leftExtDelta, leftExtVel,
+        mLSh, mLEl, mLWr, Math.min(lWrist.visibility ?? 1, lElbow.visibility ?? 1) >= MIN_LANDMARK_CONFIDENCE);
+      const rightScore = armScore('RIGHT', rightWristRel, this.prevRightWristRel,
+        this.calibration.neutralRightWristX, rightExtDelta, rightExtVel,
+        mRSh, mREl, mRWr, Math.min(rWrist.visibility ?? 1, rElbow.visibility ?? 1) >= MIN_LANDMARK_CONFIDENCE);
+      if (leftScore > 0 && leftScore >= rightScore) {
         this.leftArmPhase = 'EXTENDED';
         this.leftLastPunchMs = timestampMs;
         punchTriggered = 'LEFT';
-      }
-
-      // Update Right Arm Hysteresis
-      if (this.rightArmPhase === 'EXTENDED') {
-        if (
-          rightExtVel <= 0.15 &&
-          rightExtDelta <= PUNCH_RETRACT_RESET_DELTA &&
-          timestampMs - this.rightLastPunchMs >= PUNCH_REFRACTORY_MS
-        ) {
-          this.rightArmPhase = 'GUARD';
-        }
-      } else if (
-        !torsoRapidSway &&
-        (rWrist.visibility ?? 1) >= MIN_LANDMARK_CONFIDENCE &&
-        timestampMs - this.rightLastPunchMs >= PUNCH_REFRACTORY_MS &&
-        rightExtDelta >= PUNCH_EXT_DELTA_THRESHOLD &&
-        rightExtVel >= PUNCH_EXT_VELOCITY_THRESHOLD &&
-        rightWristSpeed >= PUNCH_WRIST_SPEED_THRESHOLD
-      ) {
-        // If both crossed threshold on exact same frame, pick the faster extending arm
-        if (!punchTriggered || rightExtVel > leftExtVel) {
-          this.rightArmPhase = 'EXTENDED';
-          this.rightLastPunchMs = timestampMs;
-          punchTriggered = 'RIGHT';
-        }
+      } else if (rightScore > 0) {
+        this.rightArmPhase = 'EXTENDED';
+        this.rightLastPunchMs = timestampMs;
+        punchTriggered = 'RIGHT';
       }
     }
 

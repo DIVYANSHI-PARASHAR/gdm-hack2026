@@ -9,6 +9,8 @@
     <div id="app">
       <div id="arena-container" aria-label="3D Boxing Arena"></div>
       <div id="screen-vignette"></div>
+      <div class="comic-impact comic-hit" id="comic-hit" hidden><span>HIT!!!</span></div>
+      <div class="comic-impact comic-ouch" id="comic-ouch" hidden><span>OUCH!!!</span></div>
 
       <!-- Top HUD: Player & Boss Health Bars + Round Info -->
       <header id="hud-top">
@@ -198,6 +200,13 @@
                 <strong id="res-peak-bpm">--</strong>
               </div>
             </div>
+            <div class="hr-summary-row hr-calories">
+              <div>
+                <small>Estimated calories</small>
+                <strong id="res-estimated-calories">Unavailable</strong>
+              </div>
+            </div>
+            <p id="res-estimated-calories-note" class="fitness-note">Based on heart rate during active play.</p>
             <p id="res-hr-note" class="fitness-note">
               Connect Fitbit Air or Demo HR before a match to record BPM.
             </p>
@@ -254,7 +263,7 @@
           <div class="how-to-grid">
             <div class="info-box">
               <h3>Webcam Gestures</h3>
-              <p>Calibrate neutral guard, punch left/right toward camera, and lean your upper body left/right to slip strikes. Video stays 100% on-device.</p>
+              <p>Calibrate neutral guard, throw straight punches or hooks, and lean your upper body left/right to slip strikes. Video stays 100% on-device.</p>
             </div>
             <div class="info-box">
               <h3>Keyboard Fallback</h3>

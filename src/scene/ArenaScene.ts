@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { bindOpponentAvatar, buildMichelleView, disposeFighterAvatar, loadFighterAvatar, type FirstPersonArm } from './FighterAvatars';
+import { bindOpponentAvatar, buildMichelleView, disposeFighterAvatar, loadFighterAvatar } from './FighterAvatars';
 import { CombatSnapshot } from '../game/combatEngine';
 import { CombatEvent } from '../shared/types';
 import {
@@ -17,7 +17,7 @@ interface SparkParticle {
   maxLife: number;
 }
 
-const BOSS_BASE_Z = 0.72;
+const BOSS_BASE_Z = 0.94;
 const BOSS_SCALE = 1.12;
 
 export class ArenaScene {
@@ -50,7 +50,7 @@ export class ArenaScene {
   private updateOpponentAvatar?: () => void;
   private opponentAvatar?: THREE.Group;
   private playerAvatar?: THREE.Group;
-  private playerAvatarArms?: [FirstPersonArm, FirstPersonArm];
+  private playerAvatarArms?: [THREE.Mesh, THREE.Mesh];
   private disposed = false;
 
   constructor(container: HTMLElement) {
@@ -592,7 +592,7 @@ export class ArenaScene {
         const [left, right] = buildMichelleView(model);
         for (const [hand, arm] of [[this.playerLeftHand, left], [this.playerRightHand, right]] as const) {
           for (const child of hand.group.children) child.visible = false;
-          hand.group.add(arm.mesh);
+          hand.group.add(arm);
         }
         this.playerAvatarArms = [left, right];
         this.playerAvatar = model;
@@ -623,14 +623,21 @@ export class ArenaScene {
           ? 0.04
           : 0;
 
+    // Keep Michelle's wrist close enough that her fixed-length upper arm
+    // stays out of frame at full extension. Impact effects mark the hit on Kai.
+    const punchReach = this.playerAvatarArms ? 0.21 : 1.18;
+    const punchInward = this.playerAvatarArms ? 0.20 : 0.29;
+    const punchLift = this.playerAvatarArms ? 0.08 : 0.18;
+    const pitchChange = this.playerAvatarArms ? 0.28 : 0.48;
+
     // Left Brawler Hand & Cyber-Forearm (Guard -> Corkscrew Pronated Punch)
     this.playerLeftHand.group.position.set(
-      -0.38 + guardTighten + leanShift + idleSway + leftExtend * 0.29,
-      -0.31 + guardTighten + idleBob + leftExtend * 0.18,
-      -0.66 - leftExtend * 1.18
+      -0.38 + guardTighten + leanShift + idleSway + leftExtend * punchInward,
+      -0.31 + guardTighten + idleBob + leftExtend * punchLift,
+      -0.66 - leftExtend * punchReach
     );
     this.playerLeftHand.group.rotation.set(
-      0.56 - leftExtend * 0.48,
+      0.56 - leftExtend * pitchChange,
       -0.22 + leftExtend * 0.18,
       1.06 * (1 - leftExtend * 0.92)
     );
@@ -643,12 +650,12 @@ export class ArenaScene {
 
     // Right Brawler Hand & Cyber-Forearm (Guard -> Corkscrew Pronated Punch)
     this.playerRightHand.group.position.set(
-      0.38 - guardTighten + leanShift - idleSway - rightExtend * 0.29,
-      -0.31 + guardTighten - idleBob + rightExtend * 0.18,
-      -0.66 - rightExtend * 1.18
+      0.38 - guardTighten + leanShift - idleSway - rightExtend * punchInward,
+      -0.31 + guardTighten - idleBob + rightExtend * punchLift,
+      -0.66 - rightExtend * punchReach
     );
     this.playerRightHand.group.rotation.set(
-      0.56 - rightExtend * 0.48,
+      0.56 - rightExtend * pitchChange,
       0.22 - rightExtend * 0.18,
       -1.06 * (1 - rightExtend * 0.92)
     );
@@ -658,8 +665,6 @@ export class ArenaScene {
       2.6 + pulse * 0.4 + rightExtend * 2.6;
     this.playerRightHand.honeycombMat.emissiveIntensity =
       2.4 + pulse * 0.5 + rightExtend * 1.8;
-    this.playerAvatarArms?.[0].updateReach(leftExtend);
-    this.playerAvatarArms?.[1].updateReach(rightExtend);
   }
 
   private animateKaiBrawler(snapshot: CombatSnapshot, dt: number): void {
@@ -996,8 +1001,8 @@ export class ArenaScene {
     this.updateOpponentAvatar = undefined;
     if (this.opponentAvatar) disposeFighterAvatar(this.opponentAvatar);
     for (const arm of this.playerAvatarArms ?? []) {
-      arm.mesh.geometry.dispose();
-      arm.mesh.removeFromParent();
+      arm.geometry.dispose();
+      arm.removeFromParent();
     }
     if (this.playerAvatar) disposeFighterAvatar(this.playerAvatar);
     this.renderer.dispose();

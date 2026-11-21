@@ -58,7 +58,7 @@ npm test        # Vitest suite: combat state machine, gesture transitions, BLE p
 1. Click **Fight with Webcam Motion** (or **Enable Webcam** in the bottom-right HUD card).
 2. **Neutral-Pose Calibration (~0.8s):** Stand or sit centered in front of your laptop webcam with both shoulders visible and hands raised in a comfortable guard. Press `C` or click **Calibrate (C)** anytime you shift seating position.
 3. **Gestures:**
-   - **Left / Right Punch:** Punch forward toward the camera/centerline. Measured in shoulder-relative coordinates combining wrist velocity, elbow extension, and depth delta, with per-arm retraction hysteresis so pulling your hand back to guard does not double-trigger.
+   - **Left / Right Punch:** Throw straight punches toward the camera or swing a hook across your body with your elbow raised. Motion is measured relative to your shoulder. Return to guard between punches with the same hand.
    - **Lean Left / Lean Right:** Shift your upper body left or right past the neutral centerline shown on the mirrored preview.
 4. **Performance & Privacy:**
    - Pose inference runs inside a dedicated **Web Worker** (`src/vision/pose.worker.ts`) using transferable `ImageBitmap` frames with a strict single-frame in-flight gate (zero stale frame backlog) so 3D rendering stays decoupled from pose inference.
@@ -78,6 +78,8 @@ The Debug Panel (`` ` ``) shows software **Detect -> Render** timing (`capturePe
 ---
 
 ## Fitbit Air Live BPM (Web Bluetooth) & Demo Mode
+
+Match results show an estimated calorie burn using the male [Keytel exercise equation](https://pubmed.ncbi.nlm.nih.gov/15966347/) for age 25 and 189 lb. The reference profile is 5′9″. The equation uses heart rate, age, sex, and weight. It counts active fight time with a live or simulated reading, shows coverage, and labels estimates that include simulated data.
 
 Live heart rate uses the standard Bluetooth Low Energy **Heart Rate Service (`0x180D`)** and **Heart Rate Measurement Characteristic (`0x2A37`)**, parsing both 8-bit (`UINT8`) and 16-bit (`UINT16`) BPM formats via the BLE flags byte.
 

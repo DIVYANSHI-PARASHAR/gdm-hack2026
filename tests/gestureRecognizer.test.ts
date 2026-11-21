@@ -118,6 +118,36 @@ describe('GestureRecognizer', () => {
     expect(rightOnset.punchTriggered).toBe('RIGHT');
   });
 
+  it.each(['LEFT', 'RIGHT'] as const)('detects a lateral %s hook with flat wrist height and depth', (side) => {
+    const rec = new GestureRecognizer();
+    let t = 0;
+    for (let i = 0; i < 16; i++) rec.processLandmarks(makeNeutralPose(), t += 33);
+
+    const left = side === 'LEFT';
+    const elbow = left ? 13 : 14;
+    const wrist = left ? 15 : 16;
+    const hook = makeNeutralPose();
+    hook[elbow].y = 0.52;
+    hook[wrist].x = left ? 0.51 : 0.49;
+
+    const onset = rec.processLandmarks(hook, t += 33);
+    expect(onset.punchTriggered).toBe(side);
+    expect(onset[left ? 'leftExtDelta' : 'rightExtDelta']).toBeLessThan(0.23);
+    expect(rec.processLandmarks(hook, t += 260).punchTriggered).toBeNull();
+    expect(rec.processLandmarks(makeNeutralPose(), t += 33).punchTriggered).toBeNull();
+    expect(rec.processLandmarks(hook, t += 33).punchTriggered).toBe(side);
+  });
+
+  it('ignores an inward guard adjustment without a raised elbow', () => {
+    const rec = new GestureRecognizer();
+    let t = 0;
+    for (let i = 0; i < 16; i++) rec.processLandmarks(makeNeutralPose(), t += 33);
+
+    const handAdjustment = makeNeutralPose();
+    handAdjustment[15].x = 0.51;
+    expect(rec.processLandmarks(handAdjustment, t += 33).punchTriggered).toBeNull();
+  });
+
   it('flags trackingLost after sustained low landmark visibility and recovers cleanly', () => {
     const rec = new GestureRecognizer();
     let t = 0;

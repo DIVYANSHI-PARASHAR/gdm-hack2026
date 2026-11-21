@@ -1,4 +1,5 @@
 import './style.css';
+import { estimateCalories } from './ble/calorieEstimate';
 import { SoundEngine } from './audio/soundEngine';
 import {
   FitbitHeartRateManager,
@@ -37,6 +38,7 @@ class IronPulseApp {
   private debugOpen = false;
   private vignetteTimeout: number | null = null;
   private calloutTimeout: number | null = null;
+  private calorieEstimate = { kcal: 0, measuredMs: 0, includesDemo: false };
 
   // Keyboard lean tracking
   private keyLeanLeft = false;
@@ -450,6 +452,12 @@ class IronPulseApp {
     this.keyLeanRight = false;
     this.completedMatchStartMs = null;
     this.completedMatchEndMs = null;
+    this.calorieEstimate = { kcal: 0, measuredMs: 0, includesDemo: false };
+    for (const id of ['comic-hit', 'comic-ouch']) {
+      const node = el<HTMLDivElement>(id);
+      for (const animation of node.getAnimations()) animation.cancel();
+      node.hidden = true;
+    }
     this.hrManager.beginMatchRecording();
     this.combat.startMatch(Date.now());
     this.syncModalVisibility();
@@ -464,10 +472,11 @@ class IronPulseApp {
         this.hrManager.notifyExertion(0.08);
         break;
       case 'PLAYER_PUNCH_HIT':
-        this.showImpactCallout(event.label || 'CLEAN HIT!', '#00f0ff');
+        this.showComicImpact('hit');
         this.hrManager.notifyExertion(0.11);
         break;
       case 'PLAYER_PUNCH_COUNTER_HIT':
+        this.showComicImpact('hit');
         this.showImpactCallout(event.label || 'COUNTER HIT!', '#39ff9f');
         this.flashVignette('flash-counter');
         this.hrManager.notifyExertion(0.14);
@@ -479,7 +488,7 @@ class IronPulseApp {
         this.showImpactCallout('COUNTER TRAP!', '#e0aaff');
         break;
       case 'BOSS_STRIKE_HIT_PLAYER':
-        this.showImpactCallout(event.label || 'HIT!', '#ff1744');
+        this.showComicImpact('ouch');
         this.flashVignette('flash-hit');
         this.hrManager.notifyExertion(0.12);
         break;
@@ -595,6 +604,15 @@ class IronPulseApp {
       el<HTMLParagraphElement>('res-hr-note').textContent =
         'No heart rate samples recorded during this match.';
     }
+
+    const { kcal, measuredMs, includesDemo } = this.calorieEstimate;
+    el('res-estimated-calories').textContent = measuredMs > 0
+      ? `≈ ${kcal.toFixed(1)} kcal${includesDemo ? ' (Demo data)' : ''}`
+      : 'Unavailable';
+    const coverage = snap.elapsedFightMs > 0 ? Math.min(100, Math.round(100 * measuredMs / snap.elapsedFightMs)) : 0;
+    el('res-estimated-calories-note').textContent = measuredMs > 0
+      ? `Heart-rate coverage ${coverage}% of active play. Profile: male, 25, 5′9″, 189 lb.`
+      : 'Connect Fitbit Air or simulate heart rate to estimate calories during play.';
 
     // Trigger post-match Google Health Synced Total Calories check
     void this.loadSyncedMatchCalories();
@@ -797,6 +815,22 @@ class IronPulseApp {
     }, 500);
   }
 
+  private showComicImpact(kind: 'hit' | 'ouch'): void {
+    const node = el<HTMLDivElement>(`comic-${kind}`);
+    for (const animation of node.getAnimations()) animation.cancel();
+    node.hidden = false;
+    const reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    const animation = node.animate(reducedMotion
+      ? [{ opacity: 1 }, { opacity: 1, offset: 0.7 }, { opacity: 0 }]
+      : [
+          { opacity: 0, scale: 0.7 },
+          { opacity: 1, scale: 1.08, offset: 0.19 },
+          { opacity: 1, scale: 1, offset: 0.68 },
+          { opacity: 0, scale: 0.94 },
+        ], { duration: 660, easing: 'ease-out' });
+    animation.onfinish = () => { node.hidden = true; };
+  }
+
   private flashVignette(cls: 'flash-hit' | 'flash-dodge' | 'flash-counter'): void {
     const vig = el<HTMLDivElement>('screen-vignette');
     vig.className = cls;
@@ -893,6 +927,14 @@ class IronPulseApp {
     const dtMs = Math.min(100, Math.max(0, nowPerfMs - this.lastFramePerfMs));
     this.lastFramePerfMs = nowPerfMs;
 
+    if (dtMs > 0 && this.combat.isFighting()) {
+      const hr = this.hrManager.getState();
+      if (hr.status === 'connected' && hr.currentBpm !== null) {
+        this.calorieEstimate.kcal += estimateCalories(hr.currentBpm, dtMs);
+        this.calorieEstimate.measuredMs += dtMs;
+        this.calorieEstimate.includesDemo ||= hr.isDemo;
+      }
+    }
     this.combat.update(dtMs, Date.now());
     const snap = this.combat.getSnapshot();
 
