@@ -118,6 +118,66 @@ describe('GestureRecognizer', () => {
     expect(rightOnset.punchTriggered).toBe('RIGHT');
   });
 
+  it('tracks slow, held and mirrored hand motion independently of punch events', () => {
+    const rec = new GestureRecognizer();
+    const pose = makeNeutralPose();
+    // An asymmetric guard should become the rest position for both gloves.
+    pose[15].y -= 0.035;
+    let t = 0;
+    const next = () => rec.processLandmarks(pose, t += 33);
+    for (let i = 0; i < 16; i++) next();
+    for (let i = 0; i < 20; i++) {
+      pose[15].x -= 0.002;
+      pose[15].y -= 0.003;
+      pose[15].z -= 0.004;
+      expect(next().punchTriggered).toBeNull();
+    }
+    const held = next();
+    expect(held.gloves.left?.x).toBeCloseTo(0.04 / 0.24);
+    expect(held.gloves.left?.y).toBeCloseTo(0.06 / 0.24);
+    expect(held.gloves.left?.forward).toBeCloseTo(0.08 / 0.24);
+    expect(held.gloves.right?.x).toBeCloseTo(0);
+    expect(held.gloves.right?.y).toBeCloseTo(0);
+    expect(next().gloves).toEqual(held.gloves);
+
+    // Move the whole torso without changing where the hands are held.
+    for (const point of pose) point.x += 0.1;
+    expect(next().gloves.left?.x).toBeCloseTo(held.gloves.left!.x);
+
+    pose[15].visibility = 0;
+    pose[16].x += 0.03;
+    const occluded = next();
+    expect(occluded.gloves.left).toBeNull();
+    expect(occluded.gloves.right?.x).toBeCloseTo(-0.03 / 0.24);
+    expect(rec.processLandmarks(null, t += 33).gloves).toEqual({ left: null, right: null });
+
+    rec.resetCalibration();
+    for (let i = 0; i < 20; i++) expect(next().calibrated).toBe(false);
+    pose[15].visibility = 1;
+    for (let i = 0; i < 16; i++) next();
+    const recalibrated = next();
+    expect(recalibrated.gloves.left?.forward).toBeCloseTo(0);
+    expect(recalibrated.gloves.right?.x).toBeCloseTo(0);
+  });
+
+  it('uses a metric arm opening and palm approach for head-on punches with little wrist travel on screen', () => {
+    const rec = new GestureRecognizer();
+    const image = makeNeutralPose();
+    const world = makeNeutralPose();
+    const guard = {x: 0.60, y: 0.47, z: -0.13, visibility: 0.99};
+    world[15] = guard;
+    for (let i = 0; i < 18; i++) rec.processLandmarks(image, i * 33, world);
+    const neutral = rec.processLandmarks(image, 600, world);
+    world[13] = { x: 0.61, y: 0.47, z: -0.23, visibility: 0.99 };
+    world[15] = { ...guard, z: -0.55 };
+    const straight = rec.processLandmarks(image, 633, world);
+    expect(neutral.gloves.left?.reach).toBeCloseTo(0);
+    expect(straight.gloves.left!.reach).toBeGreaterThan(0.7);
+    expect(straight.punchTriggered).toBe('LEFT');
+    expect(straight.gloves.right!.reach).toBeCloseTo(0);
+    expect(straight.gloves.left!.y).toBeCloseTo(0);
+  });
+
   it('flags trackingLost after sustained low landmark visibility and recovers cleanly', () => {
     const rec = new GestureRecognizer();
     let t = 0;

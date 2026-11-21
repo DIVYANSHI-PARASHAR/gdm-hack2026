@@ -31,6 +31,7 @@ export type PoseWorkerOutgoing =
       landmarks: PoseLandmarkPoint[] | null;
       capturePerfMs: number;
       inferenceMs: number;
+      world?: PoseLandmarkPoint[];
     };
 
 let landmarker: PoseLandmarker | null = null;
@@ -118,6 +119,7 @@ self.onmessage = (event: MessageEvent<PoseWorkerIncoming>) => {
 
   if (msg.type === 'FRAME') {
     const t0 = performance.now();
+    let world: PoseLandmarkPoint[] | undefined;
     let extracted: PoseLandmarkPoint[] | null = null;
 
     try {
@@ -130,6 +132,7 @@ self.onmessage = (event: MessageEvent<PoseWorkerIncoming>) => {
 
         const result = landmarker.detectForVideo(msg.bitmap, monotonicTs);
         if (result.landmarks && result.landmarks.length > 0) {
+          world = result.worldLandmarks[0];
           extracted = result.landmarks[0].map((lm) => ({
             x: lm.x,
             y: lm.y,
@@ -148,6 +151,7 @@ self.onmessage = (event: MessageEvent<PoseWorkerIncoming>) => {
     const out: PoseWorkerOutgoing = {
       type: 'RESULT',
       landmarks: extracted,
+      world,
       capturePerfMs: msg.capturePerfMs,
       inferenceMs,
     };

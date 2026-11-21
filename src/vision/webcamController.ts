@@ -2,6 +2,8 @@ import { FilesetResolver, PoseLandmarker } from '@mediapipe/tasks-vision';
 import {
   GestureFrameResult,
   GestureRecognizer,
+  GlovePose,
+  RESTING_GLOVES,
   PoseLandmarkPoint,
 } from './gestureRecognizer';
 import type { PoseWorkerOutgoing } from './pose.worker';
@@ -42,6 +44,8 @@ export class WebcamController {
   private video: HTMLVideoElement;
   private previewCanvas: HTMLCanvasElement;
   private previewCtx: CanvasRenderingContext2D;
+  private capturedPreview: HTMLCanvasElement;
+  private captureCtx: CanvasRenderingContext2D;
   private callbacks: WebcamCallbacks;
   private recognizer = new GestureRecognizer();
 
@@ -68,6 +72,7 @@ export class WebcamController {
   private lastDetectionToRenderMs = 0;
   private lastCalibrationProgress = 0;
   private lastErrorMessage?: string;
+  private latestPoseCaptureMs = -Infinity;
   private latestGestureResult: GestureFrameResult | null = null;
 
   private unloadCleanup: () => void;
@@ -75,6 +80,10 @@ export class WebcamController {
   constructor(previewCanvas: HTMLCanvasElement, callbacks: WebcamCallbacks = {}) {
     this.previewCanvas = previewCanvas;
     this.previewCtx = previewCanvas.getContext('2d')!;
+    this.capturedPreview = document.createElement('canvas');
+    this.capturedPreview.width = previewCanvas.width;
+    this.capturedPreview.height = previewCanvas.height;
+    this.captureCtx = this.capturedPreview.getContext('2d')!;
     this.callbacks = callbacks;
 
     this.video = document.createElement('video');
@@ -217,6 +226,7 @@ export class WebcamController {
 
   public recalibrate(): void {
     if (!this.running) return;
+    this.latestGestureResult = null;
     this.recognizer.resetCalibration();
     this.setState('calibrating');
   }
@@ -232,6 +242,7 @@ export class WebcamController {
     this.executionMode = 'none';
     this.cameraFps = 0;
     this.lastRecognizedGesture = 'NONE';
+    this.latestGestureResult = null;
     this.setState('off');
     this.previewCtx.clearRect(
       0,
@@ -276,9 +287,13 @@ export class WebcamController {
       );
       this.pendingCapturePerfMs = null;
     }
-    if (this.running) {
-      this.drawPreviewOverlay();
-    }
+
+  }
+
+  public getGlovePose(nowMs: number): GlovePose {
+    // A stalled camera can stop sending frames without reporting a missing pose.
+    if (this.state !== 'active' || nowMs - this.latestPoseCaptureMs > 300) return RESTING_GLOVES;
+    return this.latestGestureResult?.gloves ?? RESTING_GLOVES;
   }
 
   public getTelemetry(): VisionTelemetry {
@@ -378,12 +393,13 @@ export class WebcamController {
   private attachWorkerListener(worker: Worker): void {
     worker.onmessage = (ev: MessageEvent<PoseWorkerOutgoing>) => {
       const msg = ev.data;
-      if (msg.type !== 'RESULT') return;
+      if (msg.type !== 'RESULT' || worker !== this.worker) return;
       this.frameInFlight = false;
       this.handleLandmarksResult(
         msg.landmarks,
         msg.capturePerfMs,
-        msg.inferenceMs
+        msg.inferenceMs,
+        msg.world,
       );
     };
   }
@@ -421,14 +437,15 @@ export class WebcamController {
 
     if (this.worker) {
       this.frameInFlight = true;
+      const worker = this.worker;
       createImageBitmap(this.video)
         .then((bitmap) => {
-          if (!this.running || !this.worker) {
+          if (!this.running || this.worker !== worker) {
             bitmap.close();
-            this.frameInFlight = false;
             return;
           }
-          this.worker.postMessage(
+          this.captureCtx.drawImage(bitmap, 0, 0, this.capturedPreview.width, this.capturedPreview.height);
+          worker.postMessage(
             {
               type: 'FRAME',
               bitmap,
@@ -448,10 +465,13 @@ export class WebcamController {
       const t0 = performance.now();
       const ts = Math.max(this.lastMainThreadTs + 1, Math.floor(now));
       this.lastMainThreadTs = ts;
+      let world: PoseLandmarkPoint[] | undefined;
       let extracted: PoseLandmarkPoint[] | null = null;
       try {
+        this.captureCtx.drawImage(this.video, 0, 0, this.capturedPreview.width, this.capturedPreview.height);
         const res = this.fallbackLandmarker.detectForVideo(this.video, ts);
         if (res.landmarks && res.landmarks.length > 0) {
+          world = res.worldLandmarks[0];
           extracted = res.landmarks[0].map((lm) => ({
             x: lm.x,
             y: lm.y,
@@ -464,20 +484,23 @@ export class WebcamController {
       }
       const inferenceMs = performance.now() - t0;
       this.frameInFlight = false;
-      this.handleLandmarksResult(extracted, now, inferenceMs);
+      this.handleLandmarksResult(extracted, now, inferenceMs, world);
     }
   }
 
   private handleLandmarksResult(
     landmarks: PoseLandmarkPoint[] | null,
     capturePerfMs: number,
-    inferenceMs: number
+    inferenceMs: number,
+    world?: PoseLandmarkPoint[],
   ): void {
     if (!this.running) return;
 
     this.lastInferenceMs = inferenceMs;
-    const gesture = this.recognizer.processLandmarks(landmarks, capturePerfMs);
+    const gesture = this.recognizer.processLandmarks(performance.now() - capturePerfMs < 250 ? landmarks : null, capturePerfMs, world);
     this.latestGestureResult = gesture;
+    this.drawPreviewOverlay();
+    this.latestPoseCaptureMs = capturePerfMs;
     this.lastConfidencePct = gesture.confidence * 100;
     this.lastCalibrationProgress = gesture.calibrationProgress;
     this.pendingCapturePerfMs = capturePerfMs;
@@ -522,7 +545,7 @@ export class WebcamController {
       ctx.save();
       ctx.translate(w, 0);
       ctx.scale(-1, 1);
-      ctx.drawImage(this.video, 0, 0, w, h);
+      ctx.drawImage(this.capturedPreview, 0, 0, w, h);
       ctx.restore();
     }
 

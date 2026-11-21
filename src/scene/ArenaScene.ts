@@ -1,5 +1,8 @@
 import * as THREE from 'three';
 import { CombatSnapshot } from '../game/combatEngine';
+import { PlayerArm } from './PlayerArm';
+import { animateTrackedGlove } from './playerGlove';
+import type { GlovePose } from '../vision/gestureRecognizer';
 import { CombatEvent } from '../shared/types';
 
 interface SparkParticle {
@@ -40,8 +43,8 @@ export class ArenaScene {
   private bossArmorMaterials: THREE.MeshStandardMaterial[] = [];
 
   // Player first-person gloves
-  private playerLeftGlove: THREE.Group;
-  private playerRightGlove: THREE.Group;
+  private playerLeftArm = new PlayerArm(-1);
+  private playerRightArm = new PlayerArm(1);
 
   // Arena dynamic props
   private fans: THREE.Group[] = [];
@@ -120,11 +123,7 @@ export class ArenaScene {
 
     this.buildRobotBoss();
 
-    // Build first-person player gloves attached to camera
-    this.playerLeftGlove = this.createPlayerGlove(-1);
-    this.playerRightGlove = this.createPlayerGlove(1);
-    this.camera.add(this.playerLeftGlove);
-    this.camera.add(this.playerRightGlove);
+    this.camera.add(this.playerLeftArm, this.playerRightArm);
 
     // Impact shockwave ring & spark pool
     const ringGeo = new THREE.RingGeometry(0.18, 0.28, 32);
@@ -668,46 +667,6 @@ export class ArenaScene {
     };
   }
 
-  private createPlayerGlove(sideSign: -1 | 1): THREE.Group {
-    const group = new THREE.Group();
-    group.position.set(sideSign * 0.46, -0.38, -0.72);
-
-    const armorMat = new THREE.MeshStandardMaterial({
-      color: 0x18263a,
-      roughness: 0.32,
-      metalness: 0.82,
-    });
-    const neonTrim = new THREE.MeshStandardMaterial({
-      color: sideSign < 0 ? 0x00f0ff : 0xff2a9d,
-      emissive: sideSign < 0 ? 0x00d8ff : 0xff1e8a,
-      emissiveIntensity: 1.8,
-      roughness: 0.2,
-    });
-
-    const fist = new THREE.Mesh(
-      new THREE.BoxGeometry(0.22, 0.2, 0.28),
-      armorMat
-    );
-    group.add(fist);
-
-    const knuckleBar = new THREE.Mesh(
-      new THREE.BoxGeometry(0.23, 0.07, 0.08),
-      neonTrim
-    );
-    knuckleBar.position.set(0, 0.05, -0.13);
-    group.add(knuckleBar);
-
-    const cuff = new THREE.Mesh(
-      new THREE.BoxGeometry(0.18, 0.16, 0.22),
-      armorMat
-    );
-    cuff.position.set(0, -0.03, 0.22);
-    group.add(cuff);
-
-    group.rotation.set(0.24, sideSign * -0.22, sideSign * -0.15);
-    return group;
-  }
-
   private initSparkPool(): void {
     const geo = new THREE.BoxGeometry(0.045, 0.045, 0.14);
     for (let i = 0; i < 36; i++) {
@@ -813,7 +772,7 @@ export class ArenaScene {
     this.shockwaveLife = 0.28;
   }
 
-  public render(snapshot: CombatSnapshot, dtSec: number): void {
+  public render(snapshot: CombatSnapshot, dtSec: number, gloves: GlovePose | null, keyboardPunch: boolean): void {
     const dt = Math.min(0.05, Math.max(0.001, dtSec));
     this.clockTime += dt;
 
@@ -862,7 +821,7 @@ export class ArenaScene {
     this.camera.rotation.set(-0.04, this.currentCamX * -0.08, this.currentCamRoll);
 
     // Animate first-person player gloves
-    this.animatePlayerGloves(snapshot);
+    this.animatePlayerGloves(snapshot, dt, gloves, keyboardPunch);
 
     // Animate floating robot boss according to explicit state machine
     this.animateBoss(snapshot, dt);
@@ -873,39 +832,38 @@ export class ArenaScene {
     this.renderer.render(this.scene, this.camera);
   }
 
-  private animatePlayerGloves(snapshot: CombatSnapshot): void {
+  private animatePlayerGloves(
+    snapshot: CombatSnapshot,
+    dt: number,
+    gloves: GlovePose | null,
+    keyboardPunch: boolean,
+  ): void {
+    const tanHalfFov = Math.tan(THREE.MathUtils.degToRad(this.camera.fov / 2));
     const idleBob = Math.sin(this.clockTime * 4.2) * 0.015;
-
-    const leftExtend =
-      snapshot.playerPunchSide === 'LEFT'
-        ? Math.sin(snapshot.playerPunchProgress * Math.PI)
-        : 0;
-    const rightExtend =
-      snapshot.playerPunchSide === 'RIGHT'
-        ? Math.sin(snapshot.playerPunchProgress * Math.PI)
-        : 0;
-
-    this.playerLeftGlove.position.set(
-      -0.44 + leftExtend * 0.28,
-      -0.36 + idleBob + leftExtend * 0.18,
-      -0.72 - leftExtend * 1.15
-    );
-    this.playerLeftGlove.rotation.set(
-      0.24 - leftExtend * 0.35,
-      0.22 - leftExtend * 0.18,
-      0.15 + leftExtend * 0.55
-    );
-
-    this.playerRightGlove.position.set(
-      0.44 - rightExtend * 0.28,
-      -0.36 - idleBob + rightExtend * 0.18,
-      -0.72 - rightExtend * 1.15
-    );
-    this.playerRightGlove.rotation.set(
-      0.24 - rightExtend * 0.35,
-      -0.22 + rightExtend * 0.18,
-      -0.15 - rightExtend * 0.55
-    );
+    for (const side of ['LEFT', 'RIGHT'] as const) {
+      const left = side === 'LEFT';
+      const sign = left ? -1 : 1;
+      const arm = left ? this.playerLeftArm : this.playerRightArm;
+      const glove = arm.glove;
+      const throwing = snapshot.playerPunchSide === side;
+      const hand = (left ? gloves?.left : gloves?.right) ?? null;
+      let reach: number;
+      if (gloves && !(keyboardPunch && throwing)) {
+        reach = animateTrackedGlove(glove, sign, hand, dt, this.camera.aspect, tanHalfFov);
+      } else {
+        const progress = snapshot.playerPunchProgress;
+        // Snap out quickly, then draw the hand back to the cheek.
+        reach = throwing ? (progress < 0.26
+          ? THREE.MathUtils.smoothstep(progress, 0, 0.26)
+          : 1 - THREE.MathUtils.smoothstep(progress, 0.26, 1)) : 0;
+        glove.position.set(
+          sign * (0.36 - reach * 0.27),
+          -0.22 - sign * idleBob + reach * 0.20,
+          -0.59 - reach * 0.83,
+        );
+      }
+      arm.updateJoints(reach, hand?.elbow, dt);
+    }
   }
 
   private animateBoss(snapshot: CombatSnapshot, dt: number): void {

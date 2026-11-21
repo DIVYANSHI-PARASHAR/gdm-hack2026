@@ -1,3 +1,5 @@
+import { averageArm, boxingHand, measureArm, type ArmMeasure, type BoxingHand } from './boxingPose';
+
 export interface PoseLandmarkPoint {
   x: number; // Raw camera normalized 0..1 (unmirrored)
   y: number; // Normalized 0..1 top-to-bottom
@@ -5,7 +7,25 @@ export interface PoseLandmarkPoint {
   visibility?: number;
 }
 
+// Distances in shoulder widths, with right, up and toward-camera positive.
+export interface HandOffset {
+  x: number;
+  y: number;
+  forward: number;
+}
+
+export interface GlovePose {
+  left: BoxingHand | null;
+  right: BoxingHand | null;
+}
+
+export const RESTING_GLOVES: GlovePose = { left: null, right: null };
+
 export interface CalibrationProfile {
+  leftArm: ArmMeasure;
+  rightArm: ArmMeasure;
+  leftGuard: HandOffset;
+  rightGuard: HandOffset;
   neutralCenterMx: number;
   neutralShoulderWidth: number;
   neutralLeftExt: number;
@@ -26,6 +46,7 @@ export interface GestureFrameResult {
   punchTriggered: 'LEFT' | 'RIGHT' | null;
   leftExtDelta: number;
   rightExtDelta: number;
+  gloves: GlovePose;
   mirroredKeypoints: {
     nose: { x: number; y: number };
     leftShoulder: { x: number; y: number };
@@ -44,13 +65,55 @@ const CALIBRATION_REQUIRED_SAMPLES = 16;
 const LEAN_ENTER_THRESHOLD = 0.26;
 const LEAN_EXIT_THRESHOLD = 0.14;
 
-const PUNCH_EXT_DELTA_THRESHOLD = 0.23;
-const PUNCH_RETRACT_RESET_DELTA = 0.12;
-const PUNCH_EXT_VELOCITY_THRESHOLD = 1.35; // units/sec
-const PUNCH_WRIST_SPEED_THRESHOLD = 1.1; // shoulder-widths/sec
-const PUNCH_REFRACTORY_MS = 220;
+// One punch per extension, using the same forward reach seen by the renderer.
+class PunchStroke {
+  private phase: ArmPhase = 'GUARD';
+  private previousReach: number | null = null;
+  private lastPunchMs = -Infinity;
+
+  sample(hand: BoxingHand | null, dt: number, timestamp: number, canPunch: boolean): number {
+    if (!hand) {
+      this.previousReach = null;
+      this.phase = 'EXTENDED'; // Reacquire guard before a new punch.
+      return 0;
+    }
+    const speed = this.previousReach === null ? 0 : (hand.reach - this.previousReach) / dt;
+    this.previousReach = hand.reach;
+    if (hand.reach < 0.26) this.phase = 'GUARD';
+    if (this.phase === 'GUARD' && hand.reach >= 0.67) {
+      this.phase = 'EXTENDED';
+      if (canPunch && speed > 1.45 && timestamp - this.lastPunchMs >= 180) {
+        this.lastPunchMs = timestamp;
+        return speed;
+      }
+    }
+    return 0;
+  }
+}
+
+function wristOffset(wrist: PoseLandmarkPoint, shoulder: PoseLandmarkPoint, width: number): HandOffset {
+  return {
+    x: (wrist.x - shoulder.x) / width,
+    y: (shoulder.y - wrist.y) / width,
+    forward: (shoulder.z - wrist.z) / width,
+  };
+}
+
+function averageGuard(samples: CalibrationSample[], side: 'leftGuard' | 'rightGuard'): HandOffset {
+  const sum = { x: 0, y: 0, forward: 0 };
+  for (const sample of samples) {
+    sum.x += sample[side].x;
+    sum.y += sample[side].y;
+    sum.forward += sample[side].forward;
+  }
+  return { x: sum.x / samples.length, y: sum.y / samples.length, forward: sum.forward / samples.length };
+}
 
 interface CalibrationSample {
+  leftArm: ArmMeasure;
+  rightArm: ArmMeasure;
+  leftGuard: HandOffset;
+  rightGuard: HandOffset;
   centerMx: number;
   shoulderWidth: number;
   leftExt: number;
@@ -63,16 +126,9 @@ export class GestureRecognizer {
   private isCalibrating = true;
 
   private currentLean: 'LEFT' | 'RIGHT' | 'NONE' = 'NONE';
-  private leftArmPhase: ArmPhase = 'GUARD';
-  private rightArmPhase: ArmPhase = 'GUARD';
-  private leftLastPunchMs = -9999;
-  private rightLastPunchMs = -9999;
-
+  private leftStroke = new PunchStroke();
+  private rightStroke = new PunchStroke();
   private prevTimestampMs: number | null = null;
-  private prevLeftExt = 0;
-  private prevRightExt = 0;
-  private prevLeftWristRel = { x: 0, y: 0 };
-  private prevRightWristRel = { x: 0, y: 0 };
   private prevLeanScore = 0;
 
   private lowConfidenceSinceMs: number | null = null;
@@ -83,8 +139,11 @@ export class GestureRecognizer {
     this.calibSamples = [];
     this.isCalibrating = true;
     this.currentLean = 'NONE';
-    this.leftArmPhase = 'GUARD';
-    this.rightArmPhase = 'GUARD';
+    this.leftStroke = new PunchStroke();
+    this.rightStroke = new PunchStroke();
+    this.lowConfidenceSinceMs = null;
+    this.trackingLost = false;
+    this.prevLeanScore = 0;
     this.prevTimestampMs = null;
   }
 
@@ -103,7 +162,8 @@ export class GestureRecognizer {
 
   public processLandmarks(
     landmarks: PoseLandmarkPoint[] | null | undefined,
-    timestampMs: number
+    timestampMs: number,
+    world?: PoseLandmarkPoint[],
   ): GestureFrameResult {
     if (!landmarks || landmarks.length < 17) {
       return this.handleMissingPose(timestampMs, 0);
@@ -169,11 +229,23 @@ export class GestureRecognizer {
     const leftExt = this.computeArmExtension(mLSh, mLEl, mLWr, -1, liveShoulderWidth);
     const rightExt = this.computeArmExtension(mRSh, mREl, mRWr, 1, liveShoulderWidth);
 
+    const leftHand = wristOffset(mLWr, mLSh, liveShoulderWidth);
+    const rightHand = wristOffset(mRWr, mRSh, liveShoulderWidth);
+    const leftVisible = (lWrist.visibility ?? 1) >= MIN_LANDMARK_CONFIDENCE;
+    const rightVisible = (rWrist.visibility ?? 1) >= MIN_LANDMARK_CONFIDENCE;
+
+    const leftArm = measureArm(landmarks, world, false, liveShoulderWidth);
+    const rightArm = measureArm(landmarks, world, true, liveShoulderWidth);
+
     // Handle calibration collection
     if (this.isCalibrating || !this.calibration) {
       // Ensure user is reasonably centered inside camera frame during calibration
-      if (upperBodyMx > 0.2 && upperBodyMx < 0.8) {
+      if (leftVisible && rightVisible && upperBodyMx > 0.2 && upperBodyMx < 0.8) {
         this.calibSamples.push({
+          leftArm: leftArm.measure,
+          rightArm: rightArm.measure,
+          leftGuard: leftHand,
+          rightGuard: rightHand,
           centerMx: upperBodyMx,
           shoulderWidth: liveShoulderWidth,
           leftExt,
@@ -189,6 +261,10 @@ export class GestureRecognizer {
       if (this.calibSamples.length >= CALIBRATION_REQUIRED_SAMPLES) {
         const n = this.calibSamples.length;
         this.calibration = {
+          leftArm: averageArm(this.calibSamples.map(s => s.leftArm)),
+          rightArm: averageArm(this.calibSamples.map(s => s.rightArm)),
+          leftGuard: averageGuard(this.calibSamples, 'leftGuard'),
+          rightGuard: averageGuard(this.calibSamples, 'rightGuard'),
           neutralCenterMx:
             this.calibSamples.reduce((s, c) => s + c.centerMx, 0) / n,
           neutralShoulderWidth:
@@ -201,16 +277,6 @@ export class GestureRecognizer {
         };
         this.isCalibrating = false;
         this.prevTimestampMs = timestampMs;
-        this.prevLeftExt = leftExt;
-        this.prevRightExt = rightExt;
-        this.prevLeftWristRel = {
-          x: (mLWr.x - mLSh.x) / liveShoulderWidth,
-          y: (mLWr.y - mLSh.y) / liveShoulderWidth,
-        };
-        this.prevRightWristRel = {
-          x: (mRWr.x - mRSh.x) / liveShoulderWidth,
-          y: (mRWr.y - mRSh.y) / liveShoulderWidth,
-        };
       }
 
       return {
@@ -224,6 +290,7 @@ export class GestureRecognizer {
         punchTriggered: null,
         leftExtDelta: 0,
         rightExtDelta: 0,
+        gloves: RESTING_GLOVES,
         mirroredKeypoints,
       };
     }
@@ -264,94 +331,19 @@ export class GestureRecognizer {
         : 0.033;
 
     const leanVelocity = Math.abs(leanScore - this.prevLeanScore) / dtSec;
-    const leftWristRel = {
-      x: (mLWr.x - mLSh.x) / liveShoulderWidth,
-      y: (mLWr.y - mLSh.y) / liveShoulderWidth,
-    };
-    const rightWristRel = {
-      x: (mRWr.x - mRSh.x) / liveShoulderWidth,
-      y: (mRWr.y - mRSh.y) / liveShoulderWidth,
-    };
-
     const leftExtDelta = leftExt - this.calibration.neutralLeftExt;
     const rightExtDelta = rightExt - this.calibration.neutralRightExt;
 
+    const leftGlove = boxingHand(leftHand, this.calibration.leftGuard, leftArm, this.calibration.leftArm);
+    const rightGlove = boxingHand(rightHand, this.calibration.rightGuard, rightArm, this.calibration.rightArm);
+
+    const canPunch = this.prevTimestampMs !== null && leanVelocity <= 2.9;
+    const leftSpeed = this.leftStroke.sample(leftVisible ? leftGlove : null, dtSec, timestampMs, canPunch);
+    const rightSpeed = this.rightStroke.sample(rightVisible ? rightGlove : null, dtSec, timestampMs, canPunch);
     let punchTriggered: 'LEFT' | 'RIGHT' | null = null;
-
-    if (this.prevTimestampMs !== null) {
-      const leftExtVel = (leftExt - this.prevLeftExt) / dtSec;
-      const rightExtVel = (rightExt - this.prevRightExt) / dtSec;
-
-      const leftWristSpeed =
-        Math.hypot(
-          leftWristRel.x - this.prevLeftWristRel.x,
-          leftWristRel.y - this.prevLeftWristRel.y
-        ) / dtSec +
-        Math.max(0, leftExtVel) * 0.45;
-
-      const rightWristSpeed =
-        Math.hypot(
-          rightWristRel.x - this.prevRightWristRel.x,
-          rightWristRel.y - this.prevRightWristRel.y
-        ) / dtSec +
-        Math.max(0, rightExtVel) * 0.45;
-
-      // Suppress accidental punch triggers during rapid whole-body sway/lean onset
-      const torsoRapidSway = leanVelocity > 2.9;
-
-      // Update Left Arm Hysteresis (prevents retraction double-triggers)
-      if (this.leftArmPhase === 'EXTENDED') {
-        if (
-          leftExtVel <= 0.15 &&
-          leftExtDelta <= PUNCH_RETRACT_RESET_DELTA &&
-          timestampMs - this.leftLastPunchMs >= PUNCH_REFRACTORY_MS
-        ) {
-          this.leftArmPhase = 'GUARD';
-        }
-      } else if (
-        !torsoRapidSway &&
-        (lWrist.visibility ?? 1) >= MIN_LANDMARK_CONFIDENCE &&
-        timestampMs - this.leftLastPunchMs >= PUNCH_REFRACTORY_MS &&
-        leftExtDelta >= PUNCH_EXT_DELTA_THRESHOLD &&
-        leftExtVel >= PUNCH_EXT_VELOCITY_THRESHOLD &&
-        leftWristSpeed >= PUNCH_WRIST_SPEED_THRESHOLD
-      ) {
-        this.leftArmPhase = 'EXTENDED';
-        this.leftLastPunchMs = timestampMs;
-        punchTriggered = 'LEFT';
-      }
-
-      // Update Right Arm Hysteresis
-      if (this.rightArmPhase === 'EXTENDED') {
-        if (
-          rightExtVel <= 0.15 &&
-          rightExtDelta <= PUNCH_RETRACT_RESET_DELTA &&
-          timestampMs - this.rightLastPunchMs >= PUNCH_REFRACTORY_MS
-        ) {
-          this.rightArmPhase = 'GUARD';
-        }
-      } else if (
-        !torsoRapidSway &&
-        (rWrist.visibility ?? 1) >= MIN_LANDMARK_CONFIDENCE &&
-        timestampMs - this.rightLastPunchMs >= PUNCH_REFRACTORY_MS &&
-        rightExtDelta >= PUNCH_EXT_DELTA_THRESHOLD &&
-        rightExtVel >= PUNCH_EXT_VELOCITY_THRESHOLD &&
-        rightWristSpeed >= PUNCH_WRIST_SPEED_THRESHOLD
-      ) {
-        // If both crossed threshold on exact same frame, pick the faster extending arm
-        if (!punchTriggered || rightExtVel > leftExtVel) {
-          this.rightArmPhase = 'EXTENDED';
-          this.rightLastPunchMs = timestampMs;
-          punchTriggered = 'RIGHT';
-        }
-      }
-    }
+    if (leftSpeed || rightSpeed) punchTriggered = leftSpeed >= rightSpeed ? 'LEFT' : 'RIGHT';
 
     this.prevTimestampMs = timestampMs;
-    this.prevLeftExt = leftExt;
-    this.prevRightExt = rightExt;
-    this.prevLeftWristRel = leftWristRel;
-    this.prevRightWristRel = rightWristRel;
     this.prevLeanScore = leanScore;
 
     return {
@@ -365,6 +357,10 @@ export class GestureRecognizer {
       punchTriggered,
       leftExtDelta,
       rightExtDelta,
+      gloves: {
+        left: leftVisible ? leftGlove : null,
+        right: rightVisible ? rightGlove : null,
+      },
       mirroredKeypoints,
     };
   }
@@ -424,6 +420,8 @@ export class GestureRecognizer {
 
     this.currentLean = 'NONE';
     this.prevTimestampMs = null;
+    this.leftStroke.sample(null, 0, timestampMs, false);
+    this.rightStroke.sample(null, 0, timestampMs, false);
 
     return {
       calibrated: this.isCalibrated(),
@@ -438,6 +436,7 @@ export class GestureRecognizer {
       punchTriggered: null,
       leftExtDelta: 0,
       rightExtDelta: 0,
+      gloves: RESTING_GLOVES,
       mirroredKeypoints: null,
     };
   }

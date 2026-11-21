@@ -33,6 +33,7 @@ class IronPulseApp {
   private hrManager: FitbitHeartRateManager;
 
   private controlMode: 'keyboard' | 'webcam' = 'keyboard';
+  private lastPunchFromKeyboard = false;
   private pendingStartAfterCalibration = false;
   private debugOpen = false;
   private vignetteTimeout: number | null = null;
@@ -89,7 +90,7 @@ class IronPulseApp {
         if (snap.phase === 'FIGHTING' && gesture.calibrated && !gesture.trackingLost) {
           this.combat.setLean(gesture.lean);
           if (gesture.punchTriggered) {
-            this.combat.throwPunch(gesture.punchTriggered);
+            if (this.combat.throwPunch(gesture.punchTriggered)) this.lastPunchFromKeyboard = false;
           }
         }
       },
@@ -297,10 +298,10 @@ class IronPulseApp {
         this.applyKeyboardLean();
       } else if (code === 'KeyJ' || code === 'KeyZ' || code === 'KeyQ') {
         ev.preventDefault();
-        this.combat.throwPunch('LEFT');
+        if (this.combat.throwPunch('LEFT')) this.lastPunchFromKeyboard = true;
       } else if (code === 'KeyK' || code === 'KeyX' || code === 'KeyE') {
         ev.preventDefault();
-        this.combat.throwPunch('RIGHT');
+        if (this.combat.throwPunch('RIGHT')) this.lastPunchFromKeyboard = true;
       }
     });
 
@@ -896,7 +897,8 @@ class IronPulseApp {
     this.combat.update(dtMs, Date.now());
     const snap = this.combat.getSnapshot();
 
-    this.arena.render(snap, dtMs / 1000);
+    const gloves = this.controlMode === 'webcam' ? this.webcam.getGlovePose(nowPerfMs) : null;
+    this.arena.render(snap, dtMs / 1000, gloves, this.lastPunchFromKeyboard);
     this.webcam.markFrameRendered(performance.now());
     this.updateHud(snap);
 
