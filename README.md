@@ -87,7 +87,7 @@ Live heart rate uses the standard Bluetooth Low Energy **Heart Rate Service (`0x
 1. Open **Google Health** on your phone.
 2. Go to **Connections** and select your **Fitbit Air**.
 3. Choose **Share heart rate** and tap **Get started** *(your phone enables BLE heart-rate broadcast; your laptop runs the game)*.
-4. Open `http://localhost:5173` in desktop **Google Chrome** or **Microsoft Edge**, click **Connect Fitbit Air** below Kai’s health bar on the top left, and select your Fitbit Air in the browser chooser.
+4. Open `http://localhost:5173` in desktop **Google Chrome** or **Microsoft Edge**, click **Connect Fitbit Air** on the start screen, and select your Fitbit Air in the browser chooser.
 
 - The live pulse animation follows the latest Fitbit BPM. The match report plots recorded BPM readings beneath the average and peak.
 - Handles unsupported browsers, pairing cancelation, stale data (> 6.5s without packets), and mid-match disconnects without interrupting gameplay.
@@ -120,7 +120,7 @@ After a fight, open **Match Recap** for observed punch accuracy by hand, lean di
 ## Post-match voice shopping
 
 1. Finish a match and raise your right hand overhead with your face and wrist visible, or press **G**. The game reveals Kai’s jacket, checks live Shop MCP listings, and asks for microphone access to start Gemini voice.
-2. Ask for a jacket or a size. When the exact Gucci style isn’t available on Shop, the panel and Gemini identify the results as alternatives. You can also search and select options without a microphone.
+2. Ask for a jacket or a size. When the exact Gucci style isn’t available on Shop, the panel and Gemini identify the results as alternatives. If the jacket is unavailable in the size you ask for, Gemini shows similar jackets in that size. The voice panel shows mic activity and what Gemini heard. Select a different microphone if the meter stays flat. Use **Send voice reply** to finish an utterance or **Send** to submit a typed reply. You can also search and select options without a microphone.
 3. Ask Gemini to check out or select **Prepare merchant checkout**, then **Review and pay on merchant site**. The merchant handles payment and places the real order.
 
 Set `GEMINI_API_KEY` in `.env` with access to Gemini Live, served on localhost or HTTPS for microphone permission. Set `GEMINI_LIVE_MODEL` only if your key requires a different Live model. Shop MCP needs no Shopify account or API key. Catalog search and checkout are configured for US delivery and USD.

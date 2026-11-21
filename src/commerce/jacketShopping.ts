@@ -1,4 +1,5 @@
 import type { Checkout, Selection, ShopProduct } from '../../server/shopMcp';
+import { jacketSize } from '../shared/jacketSizes';
 import { JacketVoice } from './jacketVoice';
 
 type Results = {
@@ -37,7 +38,14 @@ async function json<T>(url: string, init: RequestInit): Promise<T> {
 export class JacketShopping {
   private status: HTMLElement;
   private caption: HTMLElement;
+  private heard: HTMLElement;
+  private clearHeard = true;
+  private heardRequest = '';
   private voiceButton: HTMLButtonElement;
+  private inputPanel: HTMLElement;
+  private micSelect: HTMLSelectElement;
+  private micLevel: HTMLMeterElement;
+  private textForm: HTMLFormElement;
   private results: HTMLElement;
   private selectedPanel: HTMLElement;
   private searchInput: HTMLInputElement;
@@ -45,6 +53,7 @@ export class JacketShopping {
   private session?: AbortController;
   private request?: AbortController;
   private products: ShopProduct[] = [];
+  private selectedProduct?: ShopProduct;
   private prepareCheckout?: () => Promise<object>;
   private intro?: Promise<string>;
   private clearCaption = true;
@@ -53,6 +62,9 @@ export class JacketShopping {
       this.status.textContent = status;
       this.voiceActive = active;
       this.voiceButton.textContent = active ? 'Stop voice' : 'Start voice';
+      this.inputPanel.hidden = !active;
+      this.textForm.hidden = !active;
+      if (!active) this.micLevel.value = 0;
     },
     (text, complete) => {
       if (text) {
@@ -61,17 +73,51 @@ export class JacketShopping {
       }
       this.clearCaption = complete;
     },
+    (level, devices) => {
+      this.micLevel.value = level;
+      if (devices) {
+        const selected = this.micSelect.value;
+        const choices = devices.filter((device) => device.deviceId && device.deviceId !== 'default');
+        const placeholder = node('option', 'System default');
+        placeholder.value = '';
+        this.micSelect.replaceChildren(placeholder, ...choices.map((device, index) => {
+          const option = node('option', device.label || `Microphone ${index + 1}`);
+          option.value = device.deviceId;
+          return option;
+        }));
+        this.micSelect.value = choices.some((device) => device.deviceId === selected) ? selected : '';
+      }
+    },
+    (text, complete) => {
+      if (text) {
+        if (this.clearHeard) this.heardRequest = '';
+        this.heardRequest += text;
+        this.heard.textContent = 'You said: ' + this.heardRequest;
+        this.clearHeard = false;
+      }
+      if (complete) this.clearHeard = true;
+    },
     async ({ name, args }) => {
       if (name === 'search_jackets' && typeof args?.query === 'string' && args.query.trim()) {
         return this.search(args.query.trim().slice(0, 240));
       }
-      if (name === 'select_jacket' && typeof args?.number === 'number') {
-        const product = this.products[args.number - 1];
+      if (name === 'choose_size' && typeof args?.size === 'string' && args.size.trim()) {
+        const product = this.selectedProduct ?? (this.products.length === 1 ? this.products[0] : undefined);
+        if (!product) return { error: 'Ask which jacket the shopper wants first.' };
+        return this.chooseOptions(product, [{ name: 'Size', label: args.size.trim().slice(0, 24) }]);
+      }
+      if (name === 'select_jacket') {
+        const number = args?.number ?? (this.products.length === 1 ? 1 : 0);
+        const product = typeof number === 'number' ? this.products[number - 1] : undefined;
         if (!product) return { error: 'Choose a result number shown in the current catalog.' };
-        const options = Array.isArray(args.options) ? args.options : [];
-        return this.select(product, options);
+        const options = Array.isArray(args?.options) ? args.options : [];
+        return this.chooseOptions(product, options);
       }
       if (name === 'prepare_checkout') {
+        if (!/\b(?:checkout|check out|buy|purchase|pay)\b/i.test(this.heardRequest)) {
+          return { error: 'A size request only selects a size. Ask whether the shopper wants to check out.' };
+        }
+        this.heardRequest = '';
         return this.prepareCheckout?.() ?? { error: 'Select a jacket first.' };
       }
       return { error: 'Unsupported shopping request.' };
@@ -81,21 +127,40 @@ export class JacketShopping {
   constructor(root: HTMLElement) {
     this.status = root.querySelector<HTMLElement>('[data-voice-status]')!;
     this.caption = root.querySelector<HTMLElement>('[data-voice-caption]')!;
+    this.heard = root.querySelector<HTMLElement>('[data-voice-heard]')!;
     this.voiceButton = root.querySelector<HTMLButtonElement>('[data-voice-button]')!;
     this.results = root.querySelector<HTMLElement>('[data-jacket-results]')!;
     this.selectedPanel = root.querySelector<HTMLElement>('[data-jacket-selection]')!;
-    this.searchInput = root.querySelector<HTMLInputElement>('input')!;
+    this.searchInput = root.querySelector<HTMLInputElement>('[data-jacket-search] input')!;
+    this.inputPanel = root.querySelector<HTMLElement>('[data-voice-input]')!;
+    this.micLevel = root.querySelector<HTMLMeterElement>('[data-microphone-level]')!;
+    this.micSelect = root.querySelector<HTMLSelectElement>('[data-microphone]')!;
+    this.textForm = root.querySelector<HTMLFormElement>('[data-voice-text]')!;
+    root.querySelector<HTMLButtonElement>('[data-voice-send]')!.onclick = () => this.voice.submitVoice();
+    this.micSelect.onchange = () => this.startVoice();
+    this.textForm.onsubmit = (event) => {
+      event.preventDefault();
+      const input = this.textForm.querySelector('input')!;
+      const text = input.value.trim();
+      if (!text || !this.voice.submitText(text)) return;
+      this.heardRequest = text;
+      this.clearHeard = true;
+      this.heard.textContent = 'You typed: ' + text;
+      input.value = '';
+    };
     this.voiceButton.onclick = () => {
       if (this.voiceActive) {
         this.voice.stop();
         this.voiceActive = false;
         this.status.textContent = 'Microphone off';
         this.voiceButton.textContent = 'Start voice';
-      } else if (this.intro) {
-        void this.voice.start(this.intro);
+        this.inputPanel.hidden = true;
+        this.textForm.hidden = true;
+      } else {
+        this.startVoice();
       }
     };
-    root.querySelector('form')!.onsubmit = (event) => {
+    root.querySelector<HTMLFormElement>('[data-jacket-search]')!.onsubmit = (event) => {
       event.preventDefault();
       void this.search(this.searchInput.value.trim());
     };
@@ -108,7 +173,11 @@ export class JacketShopping {
       'Greet the shopper, explain the initial lookup outcome and offer to help pick a size. Current Shop results: ' +
       JSON.stringify(result)
     );
-    if (autoVoice) void this.voice.start(this.intro);
+    if (autoVoice) this.startVoice();
+  }
+
+  private startVoice() {
+    if (this.intro) void this.voice.start(this.intro, this.micSelect.value);
   }
 
   close() {
@@ -118,10 +187,16 @@ export class JacketShopping {
     this.voice.stop();
     this.voiceActive = false;
     this.voiceButton.textContent = 'Start voice';
+    this.inputPanel.hidden = true;
+    this.textForm.hidden = true;
     this.status.textContent = 'Microphone off';
     this.caption.textContent = '';
+    this.heard.textContent = '';
+    this.heardRequest = '';
     this.clearCaption = true;
+    this.clearHeard = true;
     this.prepareCheckout = undefined;
+    this.selectedProduct = undefined;
     this.selectedPanel.replaceChildren();
     this.results.replaceChildren();
     this.searchInput.value = '';
@@ -129,16 +204,17 @@ export class JacketShopping {
     this.intro = undefined;
   }
 
-  private async search(query?: string) {
+  private async search(query?: string, size?: string) {
     this.request?.abort();
     const request = new AbortController();
     this.request = request;
     this.products = [];
     this.prepareCheckout = undefined;
+    this.selectedProduct = undefined;
     this.selectedPanel.replaceChildren();
     this.results.replaceChildren(node('p', 'Checking the live Shop catalog…'));
     try {
-      const data = await json<Results>('/api/jacket/products' + (query ? '?q=' + encodeURIComponent(query) : ''), {
+      const data = await json<Results>('/api/jacket/products?' + new URLSearchParams({ ...(query && { q: query }), ...(size && { size }) }), {
         signal: request.signal,
       });
       if (request.signal.aborted) return { error: 'Search replaced.' };
@@ -146,7 +222,7 @@ export class JacketShopping {
       const summary = {
         exact: 'Shop found Kai’s exact Gucci jacket.',
         similar: 'Shop couldn’t find Kai’s exact Gucci jacket. Here are similar jackets.',
-        search: 'Live Shop results',
+        search: size ? `Similar jackets in size ${size}` : 'Live Shop results',
       }[data.match];
       this.results.replaceChildren(node('p', summary));
       for (const message of data.messages ?? []) {
@@ -191,6 +267,34 @@ export class JacketShopping {
     }
   }
 
+  private async chooseOptions(product: ShopProduct, options: Selection[]) {
+    const selection = this.select(product, options);
+    const requestedSize = options.find((option) => typeof option?.name === 'string' &&
+      option.name.toLowerCase() === 'size' && typeof option.label === 'string');
+    const size = requestedSize && !selection.options?.some((option) => option.name.toLowerCase() === 'size')
+      ? requestedSize : undefined;
+    if (!size) {
+      if (!requestedSize) return selection;
+      const spokenNotice = `I selected size ${requestedSize.label}. ` +
+        (selection.missingOptions?.length
+          ? `Please choose ${selection.missingOptions.join(' and ')} next.`
+          : 'Let me know if you want to check out.');
+      this.caption.textContent = spokenNotice;
+      this.clearCaption = true;
+      return { ...selection, spokenNotice };
+    }
+    const note = `${product.title} is unavailable in size ${size.label}. Looking for similar jackets.`;
+    this.caption.textContent = note;
+    this.clearCaption = true;
+    const alternatives = await this.search('reversible monogram canvas zip bomber jacket beige brown', jacketSize(size.label));
+    const spokenNotice = `The exact jacket isn't available in size ${size.label}. ` +
+      (alternatives.products?.length ? 'I found similar jackets in your size. Which one would you like?' :
+        'I couldn’t find a similar jacket in that size.');
+    this.caption.textContent = spokenNotice;
+    this.clearCaption = true;
+    return { status: 'requested_size_unavailable', note, alternatives, spokenNotice };
+  }
+
   private select(product: ShopProduct, suggested: Selection[]) {
     const session = this.session;
     if (!session || session.signal.aborted) return { error: 'The jacket panel is closed.' };
@@ -219,7 +323,9 @@ export class JacketShopping {
         choice.name.toLowerCase() === option.name.toLowerCase()
       );
       const match = request && option.values.find((value) =>
-        value.label.toLowerCase() === request.label.toLowerCase()
+        (option.name.toLowerCase() === 'size'
+          ? jacketSize(value.label) === jacketSize(request.label)
+          : value.label.toLowerCase() === request.label.toLowerCase())
       );
       if (request && !match) unavailableOptions.push({ name: option.name, label: request.label });
       select.value = match?.label ?? (!request && option.values.length === 1 ? option.values[0].label : '');
@@ -285,6 +391,7 @@ export class JacketShopping {
       void prepareCheckout();
     };
     this.prepareCheckout = prepareCheckout;
+    this.selectedProduct = product;
     this.selectedPanel.replaceChildren(form);
     return {
       selected: product.title,

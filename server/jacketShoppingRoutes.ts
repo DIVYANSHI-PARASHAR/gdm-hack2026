@@ -11,12 +11,17 @@ export function registerJacketShoppingRoutes(app: Express, shop = new ShopMcp())
 
   app.get('/api/jacket/products', async (req, res) => {
     const query = req.query.q;
+    const size = req.query.size;
     if (query !== undefined && (typeof query !== 'string' || query.length > 240 || !query.trim())) {
       res.status(400).json({ error: 'Enter a jacket search up to 240 characters.' });
       return;
     }
+    if (size !== undefined && (typeof size !== 'string' || size.length > 24 || !query)) {
+      res.status(400).json({ error: 'Enter a valid jacket size.' });
+      return;
+    }
     try {
-      res.json(await shop.discover(query));
+      res.json(await shop.discover(query, size));
     } catch {
       res.status(502).json({ error: 'Live Shop search is temporarily unavailable. Try again.' });
     }

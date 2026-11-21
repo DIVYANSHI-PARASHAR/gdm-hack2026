@@ -8,6 +8,7 @@ type LiveMessage = {
   serverContent?: {
     interrupted?: boolean;
     turnComplete?: boolean;
+    inputTranscription?: { text: string };
     outputTranscription?: { text: string };
     modelTurn?: { parts: { inlineData?: { data: string; mimeType: string } }[] };
   };
@@ -22,31 +23,41 @@ export class JacketVoice {
   private nextAudio = 0;
   private controller?: AbortController;
   private timeout?: number;
+  private send?: (message: object) => void;
+  private finishAudio?: () => void;
 
   constructor(
     private onStatus: (status: string, active: boolean) => void,
     private onCaption: (text: string, complete: boolean) => void,
-    private onTool: (call: ToolCall) => Promise<object>,
+    private onInput: (level: number, devices?: MediaDeviceInfo[]) => void,
+    private onHeard: (text: string, complete: boolean) => void,
+    private onTool: (call: ToolCall) => Promise<{ spokenNotice?: string } & object>,
   ) {}
 
-  async start(intro: Promise<string>): Promise<void> {
+  async start(intro: Promise<string>, deviceId = ''): Promise<void> {
     this.stop();
     const controller = new AbortController();
     this.controller = controller;
     this.onStatus('Starting Gemini voice…', true);
     try {
       if (!navigator.mediaDevices?.getUserMedia) throw new Error('Microphone access requires HTTPS or localhost.');
-      const audio = new AudioContext({ sampleRate: 16000 });
+      const audio = new AudioContext();
       this.audio = audio;
       void audio.resume().catch(() => {});
       const stream = await navigator.mediaDevices.getUserMedia({
-        audio: { channelCount: 1, echoCancellation: true, noiseSuppression: true },
+        audio: {
+          channelCount: 1, echoCancellation: true, noiseSuppression: false, autoGainControl: true,
+          ...(deviceId && { deviceId: { exact: deviceId } }),
+        },
       });
       if (controller.signal.aborted) {
         stream.getTracks().forEach((track) => track.stop());
         return;
       }
       this.microphone = stream;
+      void navigator.mediaDevices.enumerateDevices().then((devices) => {
+        if (!controller.signal.aborted) this.onInput(0, devices.filter((device) => device.kind === 'audioinput'));
+      }).catch(() => {});
       const response = await fetch('/api/jacket/voice', { method: 'POST', signal: controller.signal });
       const { token, model, error } = await response.json();
       if (!response.ok) throw new Error(error || 'Gemini voice is unavailable.');
@@ -72,6 +83,11 @@ export class JacketVoice {
       socket.onopen = () => send({ setup: jacketVoiceSetup(model) });
       socket.onclose = () => fail('Gemini voice disconnected. You can restart it or shop below.');
       socket.onerror = () => fail('Gemini voice could not connect. You can still shop below.');
+      let announcedResult = false;
+      let notice: SpeechSynthesisUtterance | undefined;
+      controller.signal.addEventListener('abort', () => {
+        if (notice) window.speechSynthesis.cancel();
+      });
       socket.onmessage = async (event) => {
         if (controller.signal.aborted) return;
         try {
@@ -84,29 +100,68 @@ export class JacketVoice {
             const muted = audio.createGain();
             muted.gain.value = 0;
             source.connect(capture).connect(muted).connect(audio.destination);
+            let speech = false;
+            let quietChunks = 0;
+            this.send = send;
+            this.finishAudio = () => {
+              speech = false;
+              quietChunks = 0;
+              send({ realtimeInput: { audioStreamEnd: true } });
+            };
             capture.port.onmessage = (chunk: MessageEvent<ArrayBuffer>) => {
               if (socket.bufferedAmount > 256_000) return;
               const data = btoa(String.fromCharCode(...new Uint8Array(chunk.data)));
               send({ realtimeInput: { audio: { data, mimeType: 'audio/pcm;rate=16000' } } });
+              const samples = new Int16Array(chunk.data);
+              const power = samples.reduce((sum, sample) => sum + sample * sample, 0) / samples.length;
+              this.onInput(Math.min(100, Math.sqrt(power) / 32));
+              if (power > 120 ** 2) {
+                speech = true;
+                quietChunks = 0;
+              } else if (speech && ++quietChunks >= 6) {
+                this.finishAudio?.();
+              }
             };
             this.onStatus('Microphone on · Gemini is listening', true);
             send({ clientContent: { turns: [{ role: 'user', parts: [{ text: await intro }] }], turnComplete: true } });
           }
           const content = message.serverContent;
+          if (content?.inputTranscription || content?.turnComplete) {
+            this.onHeard(content.inputTranscription?.text ?? '', !!content.turnComplete);
+          }
           if (content?.interrupted) this.clearPlayback();
-          for (const part of content?.modelTurn?.parts ?? []) {
-            if (part.inlineData?.mimeType?.startsWith('audio/pcm')) {
-              this.play(audio, part.inlineData.data, part.inlineData.mimeType);
+          if (!announcedResult) {
+            for (const part of content?.modelTurn?.parts ?? []) {
+              if (part.inlineData?.mimeType?.startsWith('audio/pcm')) {
+                this.play(audio, part.inlineData.data, part.inlineData.mimeType);
+              }
+            }
+            if (content?.outputTranscription || content?.turnComplete || content?.interrupted) {
+              this.onCaption(content.outputTranscription?.text ?? '', !!(content.turnComplete || content.interrupted));
             }
           }
-          if (content?.outputTranscription || content?.turnComplete || content?.interrupted) {
-            this.onCaption(content.outputTranscription?.text ?? '', !!(content.turnComplete || content.interrupted));
-          }
+          if (content?.turnComplete || content?.interrupted) announcedResult = false;
           if (message.toolCall) {
             const functionResponses = [];
             for (const call of message.toolCall.functionCalls) {
               if (controller.signal.aborted) return;
-              const response = await this.onTool(call).catch(() => ({ error: 'The shopping request failed.' }));
+              const result: { spokenNotice?: string } & object = await this.onTool(call)
+                .catch(() => ({ error: 'The shopping request failed.' }));
+              if (controller.signal.aborted) return;
+              const { spokenNotice, ...response } = result;
+              if (spokenNotice && typeof window.SpeechSynthesisUtterance === 'function' && window.speechSynthesis) {
+                this.clearPlayback();
+                announcedResult = true;
+                this.onCaption('', true);
+                this.onCaption(spokenNotice, true);
+                notice = new SpeechSynthesisUtterance(spokenNotice);
+                notice.onend = () => { notice = undefined; };
+                notice.onerror = () => {
+                  notice = undefined;
+                  announcedResult = false;
+                };
+                window.speechSynthesis.speak(notice);
+              }
               functionResponses.push({ id: call.id, name: call.name, response });
             }
             send({ toolResponse: { functionResponses } });
@@ -146,7 +201,19 @@ export class JacketVoice {
     this.nextAudio = 0;
   }
 
+  submitVoice() {
+    this.finishAudio?.();
+  }
+
+  submitText(text: string): boolean {
+    if (!this.send) return false;
+    this.send({ realtimeInput: { text } });
+    return true;
+  }
+
   stop() {
+    this.send = undefined;
+    this.finishAudio = undefined;
     this.controller?.abort();
     this.controller = undefined;
     window.clearTimeout(this.timeout);

@@ -135,6 +135,7 @@ class IronPulseApp {
 
     this.bindUiEvents();
     this.bindKeyboardControls();
+    this.syncModalVisibility();
 
     // Expose read-only inspection handle for verification smoke tests
     (window as unknown as Record<string, unknown>).__IRON_PULSE__ = {
@@ -721,6 +722,15 @@ class IronPulseApp {
     const pausedCard = el<HTMLDivElement>('screen-paused');
     const resultCard = el<HTMLElement>('screen-result');
     const outfitDock = el<HTMLElement>('outfit-dock');
+
+    const fitbitSlot = snap.phase === 'READY' ? 'start-fitbit-slot'
+      : snap.phase === 'VICTORY' || snap.phase === 'DEFEAT' ? 'result-fitbit-slot'
+      : snap.phase === 'PAUSED_TRACKING' ? 'paused-fitbit-slot'
+      : 'hud-top';
+    const fitbitCard = el('fitbit-card');
+    const fitbitParent = el(fitbitSlot);
+    if (fitbitCard.parentElement !== fitbitParent) fitbitParent.append(fitbitCard);
+
 
     startCard.classList.add('hidden');
     calibCard.classList.add('hidden');

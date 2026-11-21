@@ -44,7 +44,7 @@
           </div>
         </div>
 
-        <section class="hud-card hr-card" aria-label="Fitbit heart rate">
+        <section id="fitbit-card" class="hud-card hr-card" aria-label="Fitbit heart rate">
           <div class="hr-top-row">
             <div class="hr-bpm-block">
               <span id="hr-heart-icon" class="heart-icon" aria-hidden="true">♥</span>
@@ -182,8 +182,18 @@
               <p data-voice-status role="status">Microphone off</p>
               <button data-voice-button type="button" class="btn btn-sm btn-outline-cyan">Start voice</button>
             </div>
+            <div class="jacket-voice-input" data-voice-input hidden>
+              <label>Microphone <select data-microphone><option value="">System default</option></select></label>
+              <meter data-microphone-level min="0" max="100" value="0" aria-label="Microphone input level"></meter>
+              <button data-voice-send type="button" class="btn btn-sm btn-outline-cyan">Send voice reply</button>
+            </div>
+            <p data-voice-heard></p>
             <p data-voice-caption></p>
-            <form class="jacket-search">
+            <form class="jacket-search" data-voice-text hidden>
+              <input maxlength="240" aria-label="Type a reply to Gemini" placeholder="Or type your reply">
+              <button type="submit" class="btn btn-sm btn-outline-cyan">Send</button>
+            </form>
+            <form class="jacket-search" data-jacket-search>
               <input type="search" maxlength="240" aria-label="Search live Shop jackets" placeholder="Search jackets on Shop">
               <button type="submit" class="btn btn-sm btn-outline-cyan">Search</button>
             </form>
@@ -246,6 +256,7 @@
         </div>
         <p id="res-calories-note" class="fitness-note"></p>
 
+        <div id="result-fitbit-slot"></div>
         <div class="result-actions">
           <button id="btn-match-recap" class="btn btn-lg btn-outline-cyan" aria-haspopup="dialog">
             Match Recap
@@ -280,6 +291,7 @@
             Step into the ring against <strong>KAI THE BRAWLER</strong> — an adaptive opponent who reads your movements and counters your attacks.
           </p>
 
+          <div id="start-fitbit-slot"></div>
           <div class="start-actions">
             <button id="btn-start-webcam" class="btn btn-lg btn-primary">
               Fight with Webcam Motion
@@ -321,6 +333,7 @@
 
         <!-- 3. Tracking Lost Pause Screen -->
         <div id="screen-paused" class="modal-card hidden">
+          <div id="paused-fitbit-slot"></div>
           <div class="eyebrow warning-text">COMBAT PAUSED</div>
           <h2 id="pause-heading">Pose Tracking Lost</h2>
           <p id="pause-message" class="subtitle">

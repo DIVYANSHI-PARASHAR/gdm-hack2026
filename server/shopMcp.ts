@@ -1,3 +1,4 @@
+import { jacketSize } from '../src/shared/jacketSizes';
 import { randomUUID } from 'node:crypto';
 
 export const GUCCI_URL = 'https://www.gucci.com/us/en/pr/men/ready-to-wear-for-men/outerwear-for-men/bombers-for-men/reversible-gg-canvas-jacket-p-722511ZALX21043';
@@ -72,7 +73,7 @@ export class ShopMcp {
     return result.structuredContent as T;
   }
 
-  async discover(query?: string) {
+  async discover(query?: string, size?: string) {
     if (!query) {
       const lookup = await this.call<Catalog>('lookup_catalog', {
         catalog: { ids: [GUCCI_URL], context },
@@ -91,18 +92,21 @@ export class ShopMcp {
       if (exactStyle.length) return { ...styleSearch, match: 'exact', products: exactStyle };
     }
 
-    const result = await this.search(query || 'reversible monogram canvas zip bomber jacket beige brown');
+    const result = await this.search(query || 'reversible monogram canvas zip bomber jacket beige brown', size);
     return { ...result, match: query ? 'search' : 'similar' };
   }
 
-  private async search(query: string): Promise<Catalog> {
+  private async search(query: string, size?: string): Promise<Catalog> {
     const result = await this.call<Catalog>('search_catalog', {
-      catalog: { query, context, pagination: { limit: 5 } },
+      catalog: { query, context, pagination: { limit: 5 },
+        ...(size && { filters: { attributes: [{ name: 'Size', values: [size] }] } }),
+      },
     });
     return {
       ...result,
       products: result.products.filter((product) =>
-        product.variants.some((variant) => variant.availability?.available)
+        product.variants.some((variant) => variant.availability?.available &&
+          (!size || variant.options?.some((option) => option.name.toLowerCase() === 'size' && jacketSize(option.label) === jacketSize(size))))
       ),
     };
   }

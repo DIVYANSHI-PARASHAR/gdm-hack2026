@@ -58,6 +58,20 @@ describe('live Shop MCP jacket discovery and checkout', () => {
     expect(call(2).name).toEqual('search_catalog');
   });
 
+  it('requests the spoken size from Shop and excludes a different featured size', async () => {
+    const wrongSize = { ...product, variants: [{
+      ...product.variants[0],
+      options: [{ name: 'Size', label: 'Triple extra small (XXXS)' }],
+    }] };
+    const medium = { ...product, variants: [{
+      ...product.variants[0],
+      options: [{ name: 'Size', label: 'Medium (M)' }],
+    }] };
+    const { shop, call } = mockShop({ products: [wrongSize, medium] });
+    expect(await shop.discover('canvas bomber', 'M')).toMatchObject({ products: [medium] });
+    expect(call(0).arguments.catalog.filters.attributes).toEqual([{ name: 'Size', values: ['M'] }]);
+  });
+
   it('validates the chosen variant and returns the untouched merchant checkout URL', async () => {
     const { shop, request, call } = mockShop({ product }, { continue_url: continueUrl });
     const selected = [{ name: 'Size', label: 'M' }];
