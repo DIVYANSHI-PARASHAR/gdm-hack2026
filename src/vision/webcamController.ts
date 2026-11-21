@@ -225,6 +225,10 @@ export class WebcamController {
     this.setState('calibrating');
   }
 
+  public resetHeadGrabState(): void {
+    this.recognizer.resetHeadGrabState();
+  }
+
   public stop(): void {
     this.sessionId += 1;
     this.startPromise = null;
@@ -486,7 +490,9 @@ export class WebcamController {
     this.lastCalibrationProgress = gesture.calibrationProgress;
     this.pendingCapturePerfMs = capturePerfMs;
 
-    if (gesture.punchTriggered === 'LEFT') {
+    if (gesture.headGrabTriggered || gesture.headGrabHoldProgress > 0.12) {
+      this.lastRecognizedGesture = 'HEAD GRAB';
+    } else if (gesture.punchTriggered === 'LEFT') {
       this.lastRecognizedGesture = 'PUNCH_LEFT';
     } else if (gesture.punchTriggered === 'RIGHT') {
       this.lastRecognizedGesture = 'PUNCH_RIGHT';

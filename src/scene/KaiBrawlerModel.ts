@@ -1,5 +1,89 @@
 import * as THREE from 'three';
 
+export const KAI_GUCCI_JACKET_URL =
+  'https://www.gucci.com/us/en/pr/men/ready-to-wear-for-men/outerwear-for-men/bombers-for-men/reversible-gg-canvas-jacket-p-722511ZALX21043';
+export const KAI_GUCCI_JACKET_TITLE = 'Reversible GG Canvas Bomber Jacket';
+export const KAI_GUCCI_STYLE_CODE = '722511 ZALX2 1043';
+
+export const KAI_OUTFIT_PRODUCT_ID = 'gid://shopify/Product/7983594340374';
+export const KAI_OUTFIT_HANDLE = 'puffer-jacket';
+export const KAI_OUTFIT_TITLE = 'Puffer Jacket';
+export const KAI_OUTFIT_DEFAULT_COLOR = 'Olive';
+export const KAI_OUTFIT_DEFAULT_SIZE = 'Medium';
+export const KAI_OUTFIT_DEFAULT_VARIANT_ID = 'gid://shopify/ProductVariant/43696967680022';
+
+export function createGucciGGCanvasTexture(): THREE.CanvasTexture | null {
+  if (typeof document === 'undefined') return null;
+  const canvas = document.createElement('canvas');
+  canvas.width = 256;
+  canvas.height = 256;
+  const ctx = canvas.getContext('2d');
+
+  if (ctx) {
+    // Classic Gucci Beige & Ebony canvas base
+    ctx.fillStyle = '#c8b496';
+    ctx.fillRect(0, 0, 256, 256);
+
+    // Fine woven canvas crosshatch grain
+    ctx.strokeStyle = 'rgba(74, 56, 40, 0.14)';
+    ctx.lineWidth = 1;
+    for (let i = 0; i < 256; i += 4) {
+      ctx.beginPath();
+      ctx.moveTo(i, 0);
+      ctx.lineTo(i, 256);
+      ctx.stroke();
+      ctx.beginPath();
+      ctx.moveTo(0, i);
+      ctx.lineTo(256, i);
+      ctx.stroke();
+    }
+
+    // Diamond lattice + interlocking GG monogram pattern
+    const step = 42;
+    ctx.strokeStyle = '#3b2d22';
+    ctx.lineWidth = 1.6;
+    ctx.setLineDash([3, 3]);
+    for (let x = -256; x < 512; x += step) {
+      ctx.beginPath();
+      ctx.moveTo(x, 0);
+      ctx.lineTo(x + 256, 256);
+      ctx.stroke();
+      ctx.beginPath();
+      ctx.moveTo(x + 256, 0);
+      ctx.lineTo(x, 256);
+      ctx.stroke();
+    }
+    ctx.setLineDash([]);
+
+    ctx.fillStyle = '#36281e';
+    ctx.font = 'bold 13px Georgia, serif';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    for (let row = 0; row <= 6; row++) {
+      for (let col = 0; col <= 6; col++) {
+        const cx = col * step + (row % 2 === 1 ? step * 0.5 : 0);
+        const cy = row * step * 0.5;
+        ctx.fillText('GG', cx, cy);
+      }
+    }
+
+    // Signature Gucci Green-Red-Green Web stripe accent band across trim
+    ctx.fillStyle = '#185a37';
+    ctx.fillRect(0, 212, 256, 14);
+    ctx.fillStyle = '#b82228';
+    ctx.fillRect(0, 226, 256, 14);
+    ctx.fillStyle = '#185a37';
+    ctx.fillRect(0, 240, 256, 16);
+  }
+
+  const tex = new THREE.CanvasTexture(canvas);
+  tex.colorSpace = THREE.SRGBColorSpace;
+  tex.wrapS = THREE.RepeatWrapping;
+  tex.wrapT = THREE.RepeatWrapping;
+  tex.repeat.set(2.2, 2.2);
+  return tex;
+}
+
 export interface KaiArmRig {
   shoulder: THREE.Group;
   elbow: THREE.Group;
@@ -158,21 +242,48 @@ function createTacticalFabricTexture(): THREE.CanvasTexture {
   const ctx = canvas.getContext('2d');
 
   if (ctx) {
-    ctx.fillStyle = '#31302c';
+    ctx.fillStyle = '#3a4437'; // Tactical Olive nylon
     ctx.fillRect(0, 0, 128, 128);
 
-    // Ripstop tactical grid weave
-    ctx.strokeStyle = '#252420';
+    // Quilted puffer baffle horizontal channels
+    const baffleHeight = 32;
+    for (let y = 0; y < 128; y += baffleHeight) {
+      // Puffer gradient swell (rounded down-filled baffle)
+      const grad = ctx.createLinearGradient(0, y, 0, y + baffleHeight);
+      grad.addColorStop(0, '#2b3329'); // Top seam shadow
+      grad.addColorStop(0.2, '#4a5746'); // Upper highlight ridge
+      grad.addColorStop(0.5, '#404c3d'); // Mid body
+      grad.addColorStop(0.85, '#353e32'); // Lower contour
+      grad.addColorStop(1, '#20261e'); // Bottom seam crease
+      ctx.fillStyle = grad;
+      ctx.fillRect(0, y, 128, baffleHeight);
+
+      // Horizontal baffle stitch line
+      ctx.strokeStyle = '#181d17';
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.moveTo(0, y);
+      ctx.lineTo(128, y);
+      ctx.stroke();
+
+      // Stitch thread dashed highlight
+      ctx.strokeStyle = '#5a6955';
+      ctx.lineWidth = 1;
+      ctx.setLineDash([2, 3]);
+      ctx.beginPath();
+      ctx.moveTo(0, y + 2);
+      ctx.lineTo(128, y + 2);
+      ctx.stroke();
+      ctx.setLineDash([]);
+    }
+
+    // Micro ripstop nylon weave
+    ctx.strokeStyle = 'rgba(255, 255, 255, 0.04)';
     ctx.lineWidth = 1;
-    for (let i = 0; i <= 128; i += 6) {
+    for (let i = 0; i <= 128; i += 8) {
       ctx.beginPath();
       ctx.moveTo(i, 0);
       ctx.lineTo(i, 128);
-      ctx.stroke();
-
-      ctx.beginPath();
-      ctx.moveTo(0, i);
-      ctx.lineTo(128, i);
       ctx.stroke();
     }
   }
@@ -180,7 +291,7 @@ function createTacticalFabricTexture(): THREE.CanvasTexture {
   const tex = new THREE.CanvasTexture(canvas);
   tex.wrapS = THREE.RepeatWrapping;
   tex.wrapT = THREE.RepeatWrapping;
-  tex.repeat.set(4, 4);
+  tex.repeat.set(2, 4);
   return tex;
 }
 
@@ -274,16 +385,18 @@ export function buildKaiBrawler(): KaiBrawlerRig {
     metalness: 0.04,
   });
 
+  const ggTex = createGucciGGCanvasTexture() ?? textures.tacticalFabricTex;
   const vestFabricMat = new THREE.MeshStandardMaterial({
-    color: 0x25282e,
-    map: textures.tacticalFabricTex,
-    roughness: 0.82,
-    metalness: 0.18,
+    color: 0xffffff, // Gucci Beige & Ebony Reversible GG Canvas Bomber
+    map: ggTex,
+    roughness: 0.62,
+    metalness: 0.08,
   });
   const vestPlateMat = new THREE.MeshStandardMaterial({
-    color: 0x3f454f,
-    roughness: 0.38,
-    metalness: 0.64,
+    color: 0x222226, // Reversible black technical poplin & web trim
+    map: textures.tacticalFabricTex,
+    roughness: 0.44,
+    metalness: 0.24,
   });
   const darkCyberMat = new THREE.MeshStandardMaterial({
     color: 0x1b1f26,

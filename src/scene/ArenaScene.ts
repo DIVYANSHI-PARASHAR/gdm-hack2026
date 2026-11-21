@@ -46,6 +46,7 @@ export class ArenaScene {
   private clockTime = 0;
   private knockoutFloorOffset?: number;
   private currentCamX = 0;
+  private currentCamZ = 3.45;
   private currentCamRoll = 0;
   private resizeHandler: () => void;
   private updateOpponentAvatar?: () => void;
@@ -53,6 +54,8 @@ export class ArenaScene {
   private playerAvatar?: THREE.Group;
   private playerAvatarArms?: [THREE.Mesh, THREE.Mesh];
   private disposed = false;
+  private headGrabProgress = 0;
+  private outfitRevealed = false;
 
   constructor(container: HTMLElement) {
     this.renderer = new THREE.WebGLRenderer({
@@ -119,6 +122,20 @@ export class ArenaScene {
       this.renderer.setSize(w, h);
     };
     window.addEventListener('resize', this.resizeHandler);
+  }
+
+  public setHeadGrabProgress(progress: number): void {
+    this.headGrabProgress = progress;
+  }
+
+  public resetPostMatchScene(): void {
+    this.headGrabProgress = 0;
+    this.outfitRevealed = false;
+    this.currentCamZ = 3.45;
+  }
+
+  public revealOutfit(): void {
+    this.outfitRevealed = true;
   }
 
   private setupLighting(): void {
@@ -539,10 +556,13 @@ export class ArenaScene {
         ? Math.sin(snapshot.playerPunchProgress * Math.PI) * -0.09
         : 0;
 
+    const targetCamZ = this.outfitRevealed ? 2.3 : 3.45 - this.headGrabProgress * 0.75;
+    this.currentCamZ += (targetCamZ - this.currentCamZ) * (1 - Math.exp(-dtSec * 8));
+
     this.cameraRig.position.set(
       this.currentCamX + shakeX,
       1.68 + Math.abs(this.currentCamX) * -0.06 + shakeY,
-      3.45 + punchForwardKick + knockoutPullback
+      this.currentCamZ + punchForwardKick + knockoutPullback
     );
     this.camera.rotation.set(
       -0.05 - fall * (narrowKnockout ? 0.54 : 0.32),
@@ -719,7 +739,27 @@ export class ArenaScene {
     let knuckleColor = 0xffa800;
     let conduitIntensity = 2.6 + Math.sin(t * 5.0) * 0.3;
 
-    switch (snapshot.bossState) {
+    if (this.outfitRevealed) {
+      // Showcase the jacket with Kai in a relaxed stance
+      conduitColor = 0xffb703;
+      knuckleColor = 0xffd166;
+      conduitIntensity = 3.1 + Math.sin(t * 3.2) * 0.25;
+      const breathe = Math.sin(t * 2.2) * 0.015;
+      kai.root.position.set(Math.sin(t * 1.1) * 0.03, 0, BOSS_BASE_Z + 0.32);
+      kai.pelvis.position.set(0, 0.95 + breathe, 0);
+      kai.pelvis.rotation.set(0, 0.05, 0);
+      kai.torso.rotation.set(-0.02, Math.sin(t * 1.1) * 0.04, 0);
+      kai.head.rotation.set(-0.02, Math.sin(t * 0.9) * -0.04, 0);
+
+      kai.screenLeftArm.shoulder.rotation.set(-0.12 + breathe, -0.08, -0.22);
+      kai.screenLeftArm.elbow.rotation.set(-0.32, 0, 0.08);
+      kai.screenLeftArm.wrist.rotation.set(0, 0.15, 0);
+
+      kai.screenRightArm.shoulder.rotation.set(-0.12 + breathe, 0.08, 0.22);
+      kai.screenRightArm.elbow.rotation.set(-0.32, 0, -0.08);
+      kai.screenRightArm.wrist.rotation.set(0, -0.15, 0);
+    } else {
+      switch (snapshot.bossState) {
       case 'IDLE': {
         const sway = Math.sin(t * 1.85);
         kai.root.position.x = sway * 0.11;
@@ -930,6 +970,7 @@ export class ArenaScene {
         break;
       }
     }
+  }
 
     kai.cyberConduitMat.color.setHex(conduitColor);
     kai.cyberConduitMat.emissive.setHex(conduitColor);
