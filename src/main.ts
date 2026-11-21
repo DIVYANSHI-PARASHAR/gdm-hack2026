@@ -561,8 +561,8 @@ class IronPulseApp {
     heading.textContent = victory ? 'KNOCKOUT VICTORY' : 'DEFEAT';
     heading.style.color = victory ? '#39ff9f' : '#ff1744';
     el<HTMLParagraphElement>('result-subtitle').textContent = victory
-      ? 'You shattered KRONOS-V’s plasma core!'
-      : 'KRONOS-V overwhelmed your guard. Study its windup and strike back!';
+      ? 'You knocked out KAI THE BRAWLER!'
+      : 'KAI THE BRAWLER overwhelmed your guard. Study his windup and strike back!';
 
     el<HTMLElement>('res-duration').textContent = this.formatClock(
       snap.elapsedFightMs

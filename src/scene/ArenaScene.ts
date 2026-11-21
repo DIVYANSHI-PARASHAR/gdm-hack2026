@@ -1,6 +1,13 @@
 import * as THREE from 'three';
 import { CombatSnapshot } from '../game/combatEngine';
 import { CombatEvent } from '../shared/types';
+import {
+  buildKaiBrawler,
+  createPlayerBrawlerHand,
+  KaiArmRig,
+  KaiBrawlerRig,
+  PlayerHandRig,
+} from './KaiBrawlerModel';
 
 interface SparkParticle {
   mesh: THREE.Mesh;
@@ -9,13 +16,8 @@ interface SparkParticle {
   maxLife: number;
 }
 
-interface ArmRig {
-  shoulder: THREE.Group;
-  elbow: THREE.Group;
-  gauntlet: THREE.Group;
-  knuckleGlow: THREE.MeshStandardMaterial;
-  telegraphRing: THREE.Mesh;
-}
+const BOSS_BASE_Z = 0.72;
+const BOSS_SCALE = 1.12;
 
 export class ArenaScene {
   private renderer: THREE.WebGLRenderer;
@@ -23,25 +25,12 @@ export class ArenaScene {
   private camera: THREE.PerspectiveCamera;
   private cameraRig: THREE.Group;
 
-  // Boss rig
-  private bossRoot: THREE.Group;
-  private bossPelvis: THREE.Group;
-  private bossTorso: THREE.Group;
-  private bossHead: THREE.Group;
-  private coreGroup: THREE.Group;
-  private coreRingOuter: THREE.Mesh;
-  private coreRingInner: THREE.Mesh;
-  private coreMaterial: THREE.MeshStandardMaterial;
-  private visorMaterial: THREE.MeshStandardMaterial;
-  private coreLight: THREE.PointLight;
-  private thrusterCone: THREE.Mesh;
-  private screenLeftArm!: ArmRig; // Located at x < 0 (Boss's anatomical right arm)
-  private screenRightArm!: ArmRig; // Located at x > 0 (Boss's anatomical left arm)
-  private bossArmorMaterials: THREE.MeshStandardMaterial[] = [];
+  // Opponent rig: KAI_THE_BRAWLER
+  private kai: KaiBrawlerRig;
 
-  // Player first-person gloves
-  private playerLeftGlove: THREE.Group;
-  private playerRightGlove: THREE.Group;
+  // Player first-person cyber-brawler hands & forearms
+  private playerLeftHand: PlayerHandRig;
+  private playerRightHand: PlayerHandRig;
 
   // Arena dynamic props
   private fans: THREE.Group[] = [];
@@ -66,17 +55,17 @@ export class ArenaScene {
     this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
     this.renderer.setSize(container.clientWidth, container.clientHeight);
     this.renderer.toneMapping = THREE.ACESFilmicToneMapping;
-    this.renderer.toneMappingExposure = 1.18;
+    this.renderer.toneMappingExposure = 1.22;
     container.appendChild(this.renderer.domElement);
 
     this.scene = new THREE.Scene();
     this.scene.background = new THREE.Color(0x060812);
-    this.scene.fog = new THREE.FogExp2(0x060812, 0.052);
+    this.scene.fog = new THREE.FogExp2(0x060812, 0.048);
 
     this.camera = new THREE.PerspectiveCamera(
       62,
       container.clientWidth / Math.max(1, container.clientHeight),
-      0.1,
+      0.08,
       60
     );
     this.cameraRig = new THREE.Group();
@@ -88,48 +77,22 @@ export class ArenaScene {
     this.buildIndustrialArena();
     this.ambientDust = this.buildAmbientParticles();
 
-    // Build floating robot boss
-    this.bossRoot = new THREE.Group();
-    this.bossRoot.position.set(0, 1.38, 0.0);
-    this.scene.add(this.bossRoot);
+    // Build KAI_THE_BRAWLER standing grounded on the ring deck (y = 0)
+    this.kai = buildKaiBrawler();
+    this.kai.root.scale.setScalar(BOSS_SCALE);
+    this.kai.root.position.set(0, 0, BOSS_BASE_Z);
+    this.scene.add(this.kai.root);
 
-    this.bossPelvis = new THREE.Group();
-    this.bossTorso = new THREE.Group();
-    this.bossHead = new THREE.Group();
-    this.coreGroup = new THREE.Group();
-
-    this.coreMaterial = new THREE.MeshStandardMaterial({
-      color: 0x00f0ff,
-      emissive: 0x00d8ff,
-      emissiveIntensity: 2.6,
-      roughness: 0.2,
-      metalness: 0.1,
-    });
-
-    this.visorMaterial = new THREE.MeshStandardMaterial({
-      color: 0x00f0ff,
-      emissive: 0x00e5ff,
-      emissiveIntensity: 2.4,
-      roughness: 0.15,
-    });
-
-    this.coreLight = new THREE.PointLight(0x00f0ff, 3.5, 7);
-    this.coreRingOuter = new THREE.Mesh();
-    this.coreRingInner = new THREE.Mesh();
-    this.thrusterCone = new THREE.Mesh();
-
-    this.buildRobotBoss();
-
-    // Build first-person player gloves attached to camera
-    this.playerLeftGlove = this.createPlayerGlove(-1);
-    this.playerRightGlove = this.createPlayerGlove(1);
-    this.camera.add(this.playerLeftGlove);
-    this.camera.add(this.playerRightGlove);
+    // Build matching first-person cyber-brawler hands & forearms attached to camera
+    this.playerLeftHand = createPlayerBrawlerHand(-1);
+    this.playerRightHand = createPlayerBrawlerHand(1);
+    this.camera.add(this.playerLeftHand.group);
+    this.camera.add(this.playerRightHand.group);
 
     // Impact shockwave ring & spark pool
     const ringGeo = new THREE.RingGeometry(0.18, 0.28, 32);
     const ringMat = new THREE.MeshBasicMaterial({
-      color: 0x00f5ff,
+      color: 0xff7b00,
       side: THREE.DoubleSide,
       transparent: true,
       opacity: 0,
@@ -151,25 +114,37 @@ export class ArenaScene {
   }
 
   private setupLighting(): void {
-    const hemi = new THREE.HemisphereLight(0x3a64ff, 0x1a0b24, 0.95);
+    const hemi = new THREE.HemisphereLight(0x4b74ff, 0x241410, 1.05);
     this.scene.add(hemi);
 
-    const keySpot = new THREE.SpotLight(0xd8f3ff, 42, 22, Math.PI / 3.5, 0.55, 1.3);
-    keySpot.position.set(0, 7.2, 3.6);
-    keySpot.target.position.set(0, 1.2, 0);
+    const keySpot = new THREE.SpotLight(
+      0xfff3e6,
+      46,
+      24,
+      Math.PI / 3.2,
+      0.52,
+      1.25
+    );
+    keySpot.position.set(0, 7.2, 4.2);
+    keySpot.target.position.set(0, 1.4, BOSS_BASE_Z);
     this.scene.add(keySpot);
     this.scene.add(keySpot.target);
 
+    // Front-fill light for crisp facial features, brushed chrome arms, and player wraps
+    const fighterFill = new THREE.DirectionalLight(0xdceeff, 1.35);
+    fighterFill.position.set(0.8, 2.8, 5.2);
+    this.scene.add(fighterFill);
+
     const cyanRim = new THREE.PointLight(0x00f0ff, 14, 14, 1.5);
-    cyanRim.position.set(-4.5, 3.2, -2.5);
+    cyanRim.position.set(-4.2, 3.0, -2.0);
     this.scene.add(cyanRim);
 
-    const magentaRim = new THREE.PointLight(0xff1e8a, 14, 14, 1.5);
-    magentaRim.position.set(4.5, 3.2, -2.5);
-    this.scene.add(magentaRim);
+    const amberRim = new THREE.PointLight(0xff5e00, 15, 14, 1.5);
+    amberRim.position.set(4.2, 3.0, -2.0);
+    this.scene.add(amberRim);
 
-    const underGlow = new THREE.PointLight(0xff6b00, 5, 8, 1.6);
-    underGlow.position.set(0, 0.15, 0.4);
+    const underGlow = new THREE.PointLight(0xff6b00, 5.5, 8, 1.6);
+    underGlow.position.set(0, 0.25, 1.1);
     this.scene.add(underGlow);
   }
 
@@ -198,13 +173,13 @@ export class ArenaScene {
     }
 
     // Neon center ring emblem
-    ctx.strokeStyle = 'rgba(0, 240, 255, 0.48)';
+    ctx.strokeStyle = 'rgba(0, 240, 255, 0.45)';
     ctx.lineWidth = 6;
     ctx.beginPath();
     ctx.arc(256, 256, 150, 0, Math.PI * 2);
     ctx.stroke();
 
-    ctx.strokeStyle = 'rgba(255, 30, 138, 0.4)';
+    ctx.strokeStyle = 'rgba(255, 102, 0, 0.45)';
     ctx.lineWidth = 3;
     ctx.beginPath();
     ctx.arc(256, 256, 95, 0, Math.PI * 2);
@@ -221,7 +196,7 @@ export class ArenaScene {
   }
 
   private buildIndustrialArena(): void {
-    // Elevated boxing ring deck
+    // Elevated boxing ring deck (top surface at y = 0.0)
     const deckTex = this.createDeckTexture();
     const deckGeo = new THREE.BoxGeometry(7.6, 0.5, 7.6);
     const deckMat = new THREE.MeshStandardMaterial({
@@ -267,7 +242,7 @@ export class ArenaScene {
       pylon.position.set(cx, 0.92, cz);
       this.scene.add(pylon);
 
-      const beaconColor = idx % 2 === 0 ? 0x00f0ff : 0xff1e8a;
+      const beaconColor = idx % 2 === 0 ? 0x00f0ff : 0xff6200;
       const beacon = new THREE.Mesh(
         new THREE.CylinderGeometry(0.11, 0.14, 0.22, 12),
         new THREE.MeshStandardMaterial({
@@ -283,7 +258,7 @@ export class ArenaScene {
     // Laser ropes along Left, Right, and Back edges of ring
     const ropeHeights = [0.55, 1.08, 1.62];
     ropeHeights.forEach((ry, i) => {
-      const ropeColor = i === 1 ? 0xff1e8a : 0x00f0ff;
+      const ropeColor = i === 1 ? 0xff6200 : 0x00f0ff;
       const ropeMat = new THREE.MeshBasicMaterial({
         color: ropeColor,
       });
@@ -323,7 +298,7 @@ export class ArenaScene {
       const lightBar = new THREE.Mesh(
         new THREE.BoxGeometry(5.6, 0.07, 0.1),
         new THREE.MeshBasicMaterial({
-          color: z % 2 === 0 ? 0x00f0ff : 0xff2a9d,
+          color: z % 2 === 0 ? 0x00f0ff : 0xff6a00,
         })
       );
       lightBar.position.set(0, 6.2, z);
@@ -355,7 +330,7 @@ export class ArenaScene {
       const backGlow = new THREE.Mesh(
         new THREE.CircleGeometry(1.38, 24),
         new THREE.MeshBasicMaterial({
-          color: idx === 0 ? 0x072d3d : 0x380926,
+          color: idx === 0 ? 0x072d3d : 0x3b1808,
         })
       );
       backGlow.position.z = -0.1;
@@ -389,10 +364,10 @@ export class ArenaScene {
     const geo = new THREE.BufferGeometry();
     geo.setAttribute('position', new THREE.BufferAttribute(positions, 3));
     const mat = new THREE.PointsMaterial({
-      color: 0x38e8ff,
-      size: 0.055,
+      color: 0xff9d42,
+      size: 0.05,
       transparent: true,
-      opacity: 0.55,
+      opacity: 0.5,
       blending: THREE.AdditiveBlending,
     });
     const points = new THREE.Points(geo, mat);
@@ -400,319 +375,11 @@ export class ArenaScene {
     return points;
   }
 
-  private buildRobotBoss(): void {
-    const darkChassis = new THREE.MeshStandardMaterial({
-      color: 0x1a2234,
-      roughness: 0.34,
-      metalness: 0.85,
-    });
-    const gunmetalPlate = new THREE.MeshStandardMaterial({
-      color: 0x2c3a52,
-      roughness: 0.28,
-      metalness: 0.88,
-    });
-    const hazardAccent = new THREE.MeshStandardMaterial({
-      color: 0xe68a00,
-      roughness: 0.38,
-      metalness: 0.55,
-    });
-    this.bossArmorMaterials.push(darkChassis, gunmetalPlate, hazardAccent);
-
-    // Floating thruster pelvis
-    this.bossRoot.add(this.bossPelvis);
-    const pelvisMesh = new THREE.Mesh(
-      new THREE.CylinderGeometry(0.42, 0.26, 0.36, 8),
-      darkChassis
-    );
-    this.bossPelvis.add(pelvisMesh);
-
-    const thrusterRim = new THREE.Mesh(
-      new THREE.TorusGeometry(0.32, 0.06, 10, 20),
-      gunmetalPlate
-    );
-    thrusterRim.rotation.x = Math.PI / 2;
-    thrusterRim.position.y = -0.2;
-    this.bossPelvis.add(thrusterRim);
-
-    this.thrusterCone = new THREE.Mesh(
-      new THREE.ConeGeometry(0.26, 0.65, 16, 1, true),
-      new THREE.MeshBasicMaterial({
-        color: 0x00e5ff,
-        transparent: true,
-        opacity: 0.55,
-        side: THREE.DoubleSide,
-        blending: THREE.AdditiveBlending,
-      })
-    );
-    this.thrusterCone.rotation.x = Math.PI;
-    this.thrusterCone.position.y = -0.52;
-    this.bossPelvis.add(this.thrusterCone);
-
-    // Torso attached above pelvis
-    this.bossTorso.position.set(0, 0.34, 0);
-    this.bossPelvis.add(this.bossTorso);
-
-    // Main armored chest block
-    const chestMain = new THREE.Mesh(
-      new THREE.BoxGeometry(1.16, 0.82, 0.66),
-      gunmetalPlate
-    );
-    chestMain.position.set(0, 0.34, 0);
-    this.bossTorso.add(chestMain);
-
-    // Angled chest armor plates flanking the core
-    [-0.42, 0.42].forEach((px) => {
-      const plate = new THREE.Mesh(
-        new THREE.BoxGeometry(0.34, 0.72, 0.74),
-        darkChassis
-      );
-      plate.position.set(px, 0.35, 0.05);
-      plate.rotation.y = px < 0 ? 0.18 : -0.18;
-      this.bossTorso.add(plate);
-
-      // Shoulder exhaust stacks
-      const stack = new THREE.Mesh(
-        new THREE.CylinderGeometry(0.08, 0.1, 0.48, 8),
-        darkChassis
-      );
-      stack.position.set(px * 0.9, 0.88, -0.24);
-      stack.rotation.x = -0.22;
-      this.bossTorso.add(stack);
-    });
-
-    // Glowing Reactor Core in center of chest
-    this.coreGroup.position.set(0, 0.34, 0.35);
-    this.bossTorso.add(this.coreGroup);
-
-    const coreSphere = new THREE.Mesh(
-      new THREE.OctahedronGeometry(0.2, 2),
-      this.coreMaterial
-    );
-    this.coreGroup.add(coreSphere);
-
-    this.coreRingOuter = new THREE.Mesh(
-      new THREE.TorusGeometry(0.27, 0.032, 8, 24),
-      hazardAccent
-    );
-    this.coreGroup.add(this.coreRingOuter);
-
-    this.coreRingInner = new THREE.Mesh(
-      new THREE.TorusGeometry(0.22, 0.02, 8, 20),
-      this.coreMaterial
-    );
-    this.coreGroup.add(this.coreRingInner);
-
-    this.coreLight.position.set(0, 0, 0.25);
-    this.coreGroup.add(this.coreLight);
-
-    // Articulated Visor Head
-    this.bossHead.position.set(0, 0.92, 0.06);
-    this.bossTorso.add(this.bossHead);
-
-    const helmet = new THREE.Mesh(
-      new THREE.BoxGeometry(0.52, 0.38, 0.48),
-      gunmetalPlate
-    );
-    this.bossHead.add(helmet);
-
-    const crest = new THREE.Mesh(
-      new THREE.BoxGeometry(0.14, 0.18, 0.54),
-      hazardAccent
-    );
-    crest.position.set(0, 0.22, -0.02);
-    this.bossHead.add(crest);
-
-    const visor = new THREE.Mesh(
-      new THREE.BoxGeometry(0.44, 0.11, 0.06),
-      this.visorMaterial
-    );
-    visor.position.set(0, 0.02, 0.24);
-    this.bossHead.add(visor);
-
-    // Build Left & Right Chunky Articulated Gauntlet Arms
-    // x = -0.82 is Screen-Left; x = +0.82 is Screen-Right
-    this.screenLeftArm = this.createBossArm(-1, gunmetalPlate, darkChassis, hazardAccent);
-    this.screenRightArm = this.createBossArm(1, gunmetalPlate, darkChassis, hazardAccent);
-    this.bossTorso.add(this.screenLeftArm.shoulder);
-    this.bossTorso.add(this.screenRightArm.shoulder);
-  }
-
-  private createBossArm(
-    sideSign: -1 | 1,
-    plateMat: THREE.MeshStandardMaterial,
-    darkMat: THREE.MeshStandardMaterial,
-    accentMat: THREE.MeshStandardMaterial
-  ): ArmRig {
-    const shoulder = new THREE.Group();
-    shoulder.position.set(sideSign * 0.78, 0.62, 0.02);
-
-    // Massive Shoulder Pauldron
-    const pauldron = new THREE.Mesh(
-      new THREE.BoxGeometry(0.46, 0.44, 0.52),
-      plateMat
-    );
-    pauldron.position.set(sideSign * 0.1, 0.06, 0);
-    pauldron.rotation.z = sideSign * -0.18;
-    shoulder.add(pauldron);
-
-    const pauldronStripe = new THREE.Mesh(
-      new THREE.BoxGeometry(0.48, 0.08, 0.54),
-      accentMat
-    );
-    pauldronStripe.position.set(sideSign * 0.1, 0.14, 0);
-    pauldronStripe.rotation.z = sideSign * -0.18;
-    shoulder.add(pauldronStripe);
-
-    // Upper Arm cylinder
-    const upperArm = new THREE.Mesh(
-      new THREE.CylinderGeometry(0.13, 0.11, 0.52, 10),
-      darkMat
-    );
-    upperArm.position.set(sideSign * 0.12, -0.28, 0);
-    shoulder.add(upperArm);
-
-    // Elbow Pivot
-    const elbow = new THREE.Group();
-    elbow.position.set(sideSign * 0.14, -0.54, 0.02);
-    shoulder.add(elbow);
-
-    const elbowJoint = new THREE.Mesh(
-      new THREE.SphereGeometry(0.14, 12, 12),
-      accentMat
-    );
-    elbow.add(elbowJoint);
-
-    // Chunky Articulated Forearm Gauntlet (extends along +Z when bent forward)
-    const gauntlet = new THREE.Group();
-    gauntlet.position.set(0, -0.06, 0.34);
-    elbow.add(gauntlet);
-
-    const forearmCasing = new THREE.Mesh(
-      new THREE.BoxGeometry(0.38, 0.36, 0.62),
-      plateMat
-    );
-    gauntlet.add(forearmCasing);
-
-    // Twin hydraulic pistons along top of gauntlet
-    [-0.11, 0.11].forEach((px) => {
-      const piston = new THREE.Mesh(
-        new THREE.CylinderGeometry(0.036, 0.036, 0.58, 8),
-        accentMat
-      );
-      piston.rotation.x = Math.PI / 2;
-      piston.position.set(px, 0.2, -0.02);
-      gauntlet.add(piston);
-    });
-
-    // Glowing Knuckle Strike Bumper
-    const knuckleGlow = new THREE.MeshStandardMaterial({
-      color: 0x00f0ff,
-      emissive: 0x00c8ff,
-      emissiveIntensity: 1.6,
-      roughness: 0.25,
-      metalness: 0.5,
-    });
-    const knucklePlate = new THREE.Mesh(
-      new THREE.BoxGeometry(0.42, 0.32, 0.14),
-      knuckleGlow
-    );
-    knucklePlate.position.set(0, 0, 0.34);
-    gauntlet.add(knucklePlate);
-
-    // Articulated Clamped Mechanical Fingers
-    [-0.13, 0, 0.13].forEach((fx) => {
-      const fingerProximal = new THREE.Mesh(
-        new THREE.BoxGeometry(0.09, 0.12, 0.14),
-        darkMat
-      );
-      fingerProximal.position.set(fx, -0.06, 0.43);
-      fingerProximal.rotation.x = 0.45;
-      gauntlet.add(fingerProximal);
-
-      const fingerDistal = new THREE.Mesh(
-        new THREE.BoxGeometry(0.085, 0.13, 0.1),
-        plateMat
-      );
-      fingerDistal.position.set(fx, -0.15, 0.41);
-      gauntlet.add(fingerDistal);
-    });
-
-    // Inner Thumb Clamp
-    const thumb = new THREE.Mesh(
-      new THREE.BoxGeometry(0.11, 0.12, 0.2),
-      accentMat
-    );
-    thumb.position.set(-sideSign * 0.21, -0.06, 0.3);
-    gauntlet.add(thumb);
-
-    // Expanding Holographic Telegraph Ring during windup
-    const telegraphRing = new THREE.Mesh(
-      new THREE.RingGeometry(0.28, 0.36, 24),
-      new THREE.MeshBasicMaterial({
-        color: 0xff3b30,
-        side: THREE.DoubleSide,
-        transparent: true,
-        opacity: 0,
-        blending: THREE.AdditiveBlending,
-      })
-    );
-    telegraphRing.position.set(0, 0, 0.46);
-    gauntlet.add(telegraphRing);
-
-    return {
-      shoulder,
-      elbow,
-      gauntlet,
-      knuckleGlow,
-      telegraphRing,
-    };
-  }
-
-  private createPlayerGlove(sideSign: -1 | 1): THREE.Group {
-    const group = new THREE.Group();
-    group.position.set(sideSign * 0.46, -0.38, -0.72);
-
-    const armorMat = new THREE.MeshStandardMaterial({
-      color: 0x18263a,
-      roughness: 0.32,
-      metalness: 0.82,
-    });
-    const neonTrim = new THREE.MeshStandardMaterial({
-      color: sideSign < 0 ? 0x00f0ff : 0xff2a9d,
-      emissive: sideSign < 0 ? 0x00d8ff : 0xff1e8a,
-      emissiveIntensity: 1.8,
-      roughness: 0.2,
-    });
-
-    const fist = new THREE.Mesh(
-      new THREE.BoxGeometry(0.22, 0.2, 0.28),
-      armorMat
-    );
-    group.add(fist);
-
-    const knuckleBar = new THREE.Mesh(
-      new THREE.BoxGeometry(0.23, 0.07, 0.08),
-      neonTrim
-    );
-    knuckleBar.position.set(0, 0.05, -0.13);
-    group.add(knuckleBar);
-
-    const cuff = new THREE.Mesh(
-      new THREE.BoxGeometry(0.18, 0.16, 0.22),
-      armorMat
-    );
-    cuff.position.set(0, -0.03, 0.22);
-    group.add(cuff);
-
-    group.rotation.set(0.24, sideSign * -0.22, sideSign * -0.15);
-    return group;
-  }
-
   private initSparkPool(): void {
-    const geo = new THREE.BoxGeometry(0.045, 0.045, 0.14);
+    const geo = new THREE.BoxGeometry(0.042, 0.042, 0.14);
     for (let i = 0; i < 36; i++) {
       const mat = new THREE.MeshBasicMaterial({
-        color: i % 2 === 0 ? 0x00f5ff : 0xffaa00,
+        color: i % 2 === 0 ? 0xff9500 : 0x00f5ff,
         transparent: true,
         opacity: 0,
         blending: THREE.AdditiveBlending,
@@ -733,8 +400,12 @@ export class ArenaScene {
     switch (event.type) {
       case 'PLAYER_PUNCH_HIT':
         this.spawnImpactBurst(
-          new THREE.Vector3(event.side === 'LEFT' ? -0.25 : 0.25, 1.85, 0.55),
-          0x00f5ff,
+          new THREE.Vector3(
+            event.side === 'LEFT' ? -0.22 : 0.22,
+            1.78,
+            BOSS_BASE_Z + 0.35
+          ),
+          0xff9d00,
           14
         );
         this.shakeIntensity = Math.max(this.shakeIntensity, 0.07);
@@ -743,18 +414,21 @@ export class ArenaScene {
 
       case 'PLAYER_PUNCH_COUNTER_HIT':
         this.spawnImpactBurst(
-          new THREE.Vector3(0, 1.78, 0.52),
+          new THREE.Vector3(0, 1.76, BOSS_BASE_Z + 0.32),
           0xffd60a,
           24
         );
-        this.triggerShockwave(new THREE.Vector3(0, 1.78, 0.55), 0x39ff9f);
+        this.triggerShockwave(
+          new THREE.Vector3(0, 1.74, BOSS_BASE_Z + 0.36),
+          0x39ff9f
+        );
         this.shakeIntensity = Math.max(this.shakeIntensity, 0.14);
         this.bossFlashTimer = 0.16;
         break;
 
       case 'PLAYER_PUNCH_BAITED':
         this.spawnImpactBurst(
-          new THREE.Vector3(0, 1.88, 0.65),
+          new THREE.Vector3(0, 1.78, BOSS_BASE_Z + 0.42),
           0xc040ff,
           16
         );
@@ -767,14 +441,15 @@ export class ArenaScene {
         break;
 
       case 'PLAYER_DODGE_SUCCESS':
-        this.triggerShockwave(
-          new THREE.Vector3(0, 1.65, 1.6),
-          0x00f5ff
-        );
+        this.triggerShockwave(new THREE.Vector3(0, 1.65, 1.7), 0x00f5ff);
         break;
 
       case 'MATCH_VICTORY':
-        this.spawnImpactBurst(new THREE.Vector3(0, 1.75, 0.2), 0x00f5ff, 32);
+        this.spawnImpactBurst(
+          new THREE.Vector3(0, 1.72, BOSS_BASE_Z + 0.2),
+          0xff7b00,
+          32
+        );
         this.shakeIntensity = 0.22;
         break;
 
@@ -783,7 +458,11 @@ export class ArenaScene {
     }
   }
 
-  private spawnImpactBurst(origin: THREE.Vector3, colorHex: number, count: number): void {
+  private spawnImpactBurst(
+    origin: THREE.Vector3,
+    colorHex: number,
+    count: number
+  ): void {
     let spawned = 0;
     for (const s of this.sparks) {
       if (s.life <= 0) {
@@ -851,7 +530,7 @@ export class ArenaScene {
 
     const punchForwardKick =
       snapshot.playerPunchSide !== null
-        ? Math.sin(snapshot.playerPunchProgress * Math.PI) * -0.08
+        ? Math.sin(snapshot.playerPunchProgress * Math.PI) * -0.09
         : 0;
 
     this.cameraRig.position.set(
@@ -859,13 +538,17 @@ export class ArenaScene {
       1.68 + Math.abs(this.currentCamX) * -0.06 + shakeY,
       3.45 + punchForwardKick
     );
-    this.camera.rotation.set(-0.04, this.currentCamX * -0.08, this.currentCamRoll);
+    this.camera.rotation.set(
+      -0.05,
+      this.currentCamX * -0.08,
+      this.currentCamRoll
+    );
 
-    // Animate first-person player gloves
-    this.animatePlayerGloves(snapshot);
+    // Animate first-person cyber-brawler hands & forearms
+    this.animatePlayerHands(snapshot);
 
-    // Animate floating robot boss according to explicit state machine
-    this.animateBoss(snapshot, dt);
+    // Animate KAI_THE_BRAWLER according to explicit combat state machine
+    this.animateKaiBrawler(snapshot, dt);
 
     // Update sparks & shockwave
     this.updateFX(dt);
@@ -873,8 +556,11 @@ export class ArenaScene {
     this.renderer.render(this.scene, this.camera);
   }
 
-  private animatePlayerGloves(snapshot: CombatSnapshot): void {
-    const idleBob = Math.sin(this.clockTime * 4.2) * 0.015;
+  private animatePlayerHands(snapshot: CombatSnapshot): void {
+    const t = this.clockTime;
+    const idleBob = Math.sin(t * 4.2) * 0.014;
+    const idleSway = Math.cos(t * 2.1) * 0.01;
+    const pulse = 0.5 + 0.5 * Math.sin(t * 5.2);
 
     const leftExtend =
       snapshot.playerPunchSide === 'LEFT'
@@ -885,228 +571,336 @@ export class ArenaScene {
         ? Math.sin(snapshot.playerPunchProgress * Math.PI)
         : 0;
 
-    this.playerLeftGlove.position.set(
-      -0.44 + leftExtend * 0.28,
-      -0.36 + idleBob + leftExtend * 0.18,
-      -0.72 - leftExtend * 1.15
-    );
-    this.playerLeftGlove.rotation.set(
-      0.24 - leftExtend * 0.35,
-      0.22 - leftExtend * 0.18,
-      0.15 + leftExtend * 0.55
-    );
+    const guardTighten = snapshot.playerState === 'HIT_STUN' ? 0.07 : 0;
+    const leanShift =
+      snapshot.playerLean === 'LEFT'
+        ? -0.04
+        : snapshot.playerLean === 'RIGHT'
+          ? 0.04
+          : 0;
 
-    this.playerRightGlove.position.set(
-      0.44 - rightExtend * 0.28,
-      -0.36 - idleBob + rightExtend * 0.18,
-      -0.72 - rightExtend * 1.15
+    // Left Brawler Hand & Cyber-Forearm (Guard -> Corkscrew Pronated Punch)
+    this.playerLeftHand.group.position.set(
+      -0.38 + guardTighten + leanShift + idleSway + leftExtend * 0.29,
+      -0.31 + guardTighten + idleBob + leftExtend * 0.18,
+      -0.66 - leftExtend * 1.18
     );
-    this.playerRightGlove.rotation.set(
-      0.24 - rightExtend * 0.35,
-      -0.22 + rightExtend * 0.18,
-      -0.15 - rightExtend * 0.55
+    this.playerLeftHand.group.rotation.set(
+      0.56 - leftExtend * 0.48,
+      -0.22 + leftExtend * 0.18,
+      1.06 * (1 - leftExtend * 0.92)
     );
+    this.playerLeftHand.conduitMat.emissiveIntensity =
+      2.3 + pulse * 0.45 + leftExtend * 2.4;
+    this.playerLeftHand.knuckleStudMat.emissiveIntensity =
+      2.6 + pulse * 0.4 + leftExtend * 2.6;
+    this.playerLeftHand.honeycombMat.emissiveIntensity =
+      2.4 + pulse * 0.5 + leftExtend * 1.8;
+
+    // Right Brawler Hand & Cyber-Forearm (Guard -> Corkscrew Pronated Punch)
+    this.playerRightHand.group.position.set(
+      0.38 - guardTighten + leanShift - idleSway - rightExtend * 0.29,
+      -0.31 + guardTighten - idleBob + rightExtend * 0.18,
+      -0.66 - rightExtend * 1.18
+    );
+    this.playerRightHand.group.rotation.set(
+      0.56 - rightExtend * 0.48,
+      0.22 - rightExtend * 0.18,
+      -1.06 * (1 - rightExtend * 0.92)
+    );
+    this.playerRightHand.conduitMat.emissiveIntensity =
+      2.3 + pulse * 0.45 + rightExtend * 2.4;
+    this.playerRightHand.knuckleStudMat.emissiveIntensity =
+      2.6 + pulse * 0.4 + rightExtend * 2.6;
+    this.playerRightHand.honeycombMat.emissiveIntensity =
+      2.4 + pulse * 0.5 + rightExtend * 1.8;
   }
 
-  private animateBoss(snapshot: CombatSnapshot, dt: number): void {
+  private animateKaiBrawler(snapshot: CombatSnapshot, dt: number): void {
     const t = this.clockTime;
     const p = snapshot.bossStateProgress;
+    const kai = this.kai;
 
-    // Spin reactor containment rings & pulse thruster cone
-    this.coreRingOuter.rotation.z = t * 1.8;
-    this.coreRingInner.rotation.x = t * 2.5;
-    this.coreRingInner.rotation.y = t * 1.7;
-    this.thrusterCone.scale.set(
-      1 + Math.sin(t * 28) * 0.08,
-      0.92 + Math.cos(t * 34) * 0.14,
-      1 + Math.sin(t * 28) * 0.08
-    );
-
-    // Hit flash decay
+    // Hit flash decay across armor & bionic plates
     if (this.bossFlashTimer > 0) {
       this.bossFlashTimer = Math.max(0, this.bossFlashTimer - dt);
-      for (const mat of this.bossArmorMaterials) {
+      for (const mat of kai.flashableMaterials) {
         mat.emissive.setHex(0xffffff);
-        mat.emissiveIntensity = this.bossFlashTimer * 3.2;
+        mat.emissiveIntensity = this.bossFlashTimer * 3.0;
       }
     } else {
-      for (const mat of this.bossArmorMaterials) {
+      for (const mat of kai.flashableMaterials) {
         mat.emissiveIntensity = 0;
       }
     }
 
-    // Reset baseline transforms
-    const hoverY = 1.38 + Math.sin(t * 3.1) * 0.065;
-    this.bossRoot.position.set(0, hoverY, 0);
-    this.bossRoot.rotation.set(0, 0, 0);
-    this.bossTorso.rotation.set(0, 0, 0);
-    this.bossHead.rotation.set(0, 0, 0);
+    // Athletic boxing footwork bounce (keeps boots grounded cleanly)
+    const bounce = Math.abs(Math.sin(t * 3.6)) * 0.028;
+    kai.root.position.set(0, 0, BOSS_BASE_Z);
+    kai.root.rotation.set(0, 0, 0);
 
-    // Default boxing guard pose for both arms
-    this.setGuardArmPose(this.screenLeftArm, -1, t);
-    this.setGuardArmPose(this.screenRightArm, 1, t);
-    (this.screenLeftArm.telegraphRing.material as THREE.MeshBasicMaterial).opacity = 0;
-    (this.screenRightArm.telegraphRing.material as THREE.MeshBasicMaterial).opacity = 0;
+    kai.pelvis.position.set(0, 0.945 - bounce, 0);
+    kai.pelvis.rotation.set(0, 0.12, 0); // Subtle orthodox brawler angle
+    kai.torso.rotation.set(0.05, -0.06, 0);
+    kai.head.rotation.set(-0.03, -0.05, 0);
 
-    let themeColor = 0x00f0ff;
-    let coreIntensity = 2.4;
+    // Default split-stance boxing legs
+    this.setDefaultLegStance(bounce);
+
+    // Default high Muay-Thai / Cyber-Brawler guard for both arms
+    this.setGuardArmPose(kai.screenLeftArm, -1, t);
+    this.setGuardArmPose(kai.screenRightArm, 1, t);
+    (kai.screenLeftArm.telegraphRing.material as THREE.MeshBasicMaterial).opacity = 0;
+    (kai.screenRightArm.telegraphRing.material as THREE.MeshBasicMaterial).opacity = 0;
+
+    // Kai's signature fiery cybernetic orange-amber energy palette
+    let conduitColor = 0xff5e00;
+    let knuckleColor = 0xffa800;
+    let conduitIntensity = 2.6 + Math.sin(t * 5.0) * 0.3;
 
     switch (snapshot.bossState) {
       case 'IDLE': {
-        themeColor = 0x00f0ff;
-        this.bossRoot.position.x = Math.sin(t * 1.7) * 0.14;
-        this.bossTorso.rotation.y = Math.sin(t * 1.7) * 0.08;
+        const sway = Math.sin(t * 1.85);
+        kai.root.position.x = sway * 0.11;
+        kai.torso.rotation.y = -0.06 + sway * 0.08;
+        kai.torso.rotation.z = sway * -0.04;
+        kai.head.rotation.y = -0.04 - sway * 0.05;
         break;
       }
 
       case 'BAIT_GUARD': {
-        themeColor = 0xc040ff;
-        coreIntensity = 3.4 + Math.sin(t * 24) * 0.8;
-        // High crossed electric counter-guard
-        this.bossTorso.rotation.x = 0.08;
-        this.screenLeftArm.shoulder.rotation.set(-0.85, 0.42, 0.2);
-        this.screenLeftArm.elbow.rotation.set(-0.95, 0.3, 0);
-        this.screenRightArm.shoulder.rotation.set(-0.85, -0.42, -0.2);
-        this.screenRightArm.elbow.rotation.set(-0.95, -0.3, 0);
+        conduitColor = 0xc040ff;
+        knuckleColor = 0xe066ff;
+        conduitIntensity = 3.5 + Math.sin(t * 24) * 0.8;
+        // Tight crossed cyber-brawler counter shell
+        kai.pelvis.position.y = 0.92 - bounce * 0.5;
+        kai.torso.rotation.set(0.14, 0, 0);
+        kai.head.rotation.set(0.08, 0, 0);
+
+        kai.screenLeftArm.shoulder.rotation.set(-0.92, 0.42, 0.18);
+        kai.screenLeftArm.elbow.rotation.set(-1.68, 0, 0.46);
+        kai.screenLeftArm.wrist.rotation.set(0, 0.4, 0);
+
+        kai.screenRightArm.shoulder.rotation.set(-0.92, -0.42, -0.18);
+        kai.screenRightArm.elbow.rotation.set(-1.68, 0, -0.46);
+        kai.screenRightArm.wrist.rotation.set(0, -0.4, 0);
         break;
       }
 
       case 'WINDUP': {
         const pulse = 0.5 + 0.5 * Math.sin(p * Math.PI * 6);
-        themeColor = p > 0.65 ? 0xff1744 : 0xff7b00;
-        coreIntensity = 3.2 + p * 2.0;
+        conduitColor = p > 0.65 ? 0xff1744 : 0xff7b00;
+        knuckleColor = p > 0.65 ? 0xff2a4b : 0xffbe0b;
+        conduitIntensity = 3.4 + p * 2.2;
 
         if (snapshot.bossAttackSide === 'LEFT') {
-          // Wind up Screen-Left arm wide & high!
-          this.bossTorso.rotation.y = -0.48 * p;
-          this.bossTorso.rotation.z = 0.12 * p;
-          this.screenLeftArm.shoulder.rotation.set(0.35 * p, -0.65 * p, -0.85 * p);
-          this.screenLeftArm.elbow.rotation.set(-0.55, 0, 0);
-          this.updateTelegraphRing(this.screenLeftArm.telegraphRing, p, pulse);
+          // Coil Screen-Left cyber-arm wide for heavy hook/cross
+          kai.pelvis.rotation.y = -0.22 * p;
+          kai.torso.rotation.set(0.06, -0.54 * p, 0.1 * p);
+          kai.head.rotation.set(0, 0.42 * p, 0);
+          kai.screenLeftArm.shoulder.rotation.set(
+            -0.55 - 0.35 * p,
+            -0.58 * p,
+            -0.78 * p
+          );
+          kai.screenLeftArm.elbow.rotation.set(-1.15 + 0.25 * p, 0, 0);
+          kai.screenLeftArm.wrist.rotation.set(0, 1.15 * p, 0);
+          this.updateTelegraphRing(kai.screenLeftArm.telegraphRing, p, pulse);
         } else if (snapshot.bossAttackSide === 'RIGHT') {
-          // Wind up Screen-Right arm wide & high!
-          this.bossTorso.rotation.y = 0.48 * p;
-          this.bossTorso.rotation.z = -0.12 * p;
-          this.screenRightArm.shoulder.rotation.set(0.35 * p, 0.65 * p, 0.85 * p);
-          this.screenRightArm.elbow.rotation.set(-0.55, 0, 0);
-          this.updateTelegraphRing(this.screenRightArm.telegraphRing, p, pulse);
+          // Coil Screen-Right cyber-arm wide for heavy hook/cross
+          kai.pelvis.rotation.y = 0.28 * p;
+          kai.torso.rotation.set(0.06, 0.54 * p, -0.1 * p);
+          kai.head.rotation.set(0, -0.42 * p, 0);
+          kai.screenRightArm.shoulder.rotation.set(
+            -0.55 - 0.35 * p,
+            0.58 * p,
+            0.78 * p
+          );
+          kai.screenRightArm.elbow.rotation.set(-1.15 + 0.25 * p, 0, 0);
+          kai.screenRightArm.wrist.rotation.set(0, -1.15 * p, 0);
+          this.updateTelegraphRing(kai.screenRightArm.telegraphRing, p, pulse);
         } else {
-          // CENTER heavy double/overhead straight windup!
-          this.bossRoot.position.z = -0.32 * p;
-          this.bossTorso.rotation.x = -0.28 * p;
-          this.screenLeftArm.shoulder.rotation.set(-1.35 * p, -0.25, -0.45);
-          this.screenRightArm.shoulder.rotation.set(-1.35 * p, 0.25, 0.45);
-          this.updateTelegraphRing(this.screenLeftArm.telegraphRing, p, pulse);
-          this.updateTelegraphRing(this.screenRightArm.telegraphRing, p, pulse);
+          // CENTER power windup: deep crouch & dual cocked cyber-fists
+          kai.root.position.z = BOSS_BASE_Z - 0.26 * p;
+          kai.pelvis.position.y = 0.93 - 0.08 * p;
+          kai.torso.rotation.set(-0.22 * p, 0, 0);
+          kai.screenLeftArm.shoulder.rotation.set(-1.25 * p, -0.25, -0.52);
+          kai.screenLeftArm.elbow.rotation.set(-1.35, 0, 0);
+          kai.screenRightArm.shoulder.rotation.set(-1.25 * p, 0.25, 0.52);
+          kai.screenRightArm.elbow.rotation.set(-1.35, 0, 0);
+          this.updateTelegraphRing(kai.screenLeftArm.telegraphRing, p, pulse);
+          this.updateTelegraphRing(kai.screenRightArm.telegraphRing, p, pulse);
         }
         break;
       }
 
       case 'STRIKE_ACTIVE': {
-        themeColor = 0xff1744;
-        coreIntensity = 4.6;
+        conduitColor = 0xff1e00;
+        knuckleColor = 0xffaa00;
+        conduitIntensity = 4.8;
         const thrust = Math.sin(Math.min(1, p * 1.35) * Math.PI * 0.5);
-        this.bossRoot.position.z = 1.15 * thrust;
+        kai.root.position.z = BOSS_BASE_Z + 1.05 * thrust;
+        kai.pelvis.position.y = 0.91;
+        kai.screenLeftLeg.hip.rotation.x = -0.34 * thrust;
+        kai.screenLeftLeg.knee.rotation.x = 0.42 * thrust;
+        kai.screenRightLeg.hip.rotation.x = 0.32 * thrust;
 
         if (snapshot.bossAttackSide === 'LEFT') {
-          this.bossRoot.position.x = -0.36 * thrust;
-          this.bossTorso.rotation.y = 0.52 * thrust;
-          this.screenLeftArm.shoulder.rotation.set(-1.28, 0.28, 0.15);
-          this.screenLeftArm.elbow.rotation.set(-0.08, 0, 0);
+          kai.root.position.x = -0.28 * thrust;
+          kai.pelvis.rotation.y = 0.26 * thrust;
+          kai.torso.rotation.set(0.14 * thrust, 0.56 * thrust, -0.06 * thrust);
+          kai.head.rotation.set(-0.08, -0.45 * thrust, 0);
+          kai.screenLeftArm.shoulder.rotation.set(-1.52, 0.22, 0.12);
+          kai.screenLeftArm.elbow.rotation.set(-0.08, 0, 0);
+          kai.screenLeftArm.wrist.rotation.set(0, 1.45, 0);
         } else if (snapshot.bossAttackSide === 'RIGHT') {
-          this.bossRoot.position.x = 0.36 * thrust;
-          this.bossTorso.rotation.y = -0.52 * thrust;
-          this.screenRightArm.shoulder.rotation.set(-1.28, -0.28, -0.15);
-          this.screenRightArm.elbow.rotation.set(-0.08, 0, 0);
+          kai.root.position.x = 0.28 * thrust;
+          kai.pelvis.rotation.y = -0.26 * thrust;
+          kai.torso.rotation.set(0.14 * thrust, -0.56 * thrust, 0.06 * thrust);
+          kai.head.rotation.set(-0.08, 0.45 * thrust, 0);
+          kai.screenRightArm.shoulder.rotation.set(-1.52, -0.22, -0.12);
+          kai.screenRightArm.elbow.rotation.set(-0.08, 0, 0);
+          kai.screenRightArm.wrist.rotation.set(0, -1.45, 0);
         } else {
-          // Center dual straight slam down the middle
-          this.bossTorso.rotation.x = 0.25 * thrust;
-          this.screenLeftArm.shoulder.rotation.set(-1.42, 0.18, 0.1);
-          this.screenLeftArm.elbow.rotation.set(-0.05, 0, 0);
-          this.screenRightArm.shoulder.rotation.set(-1.42, -0.18, -0.1);
-          this.screenRightArm.elbow.rotation.set(-0.05, 0, 0);
+          // Center dual straight power slam down the middle
+          kai.torso.rotation.set(0.24 * thrust, 0, 0);
+          kai.head.rotation.set(-0.14 * thrust, 0, 0);
+          kai.screenLeftArm.shoulder.rotation.set(-1.52, 0.16, 0.08);
+          kai.screenLeftArm.elbow.rotation.set(-0.06, 0, 0);
+          kai.screenLeftArm.wrist.rotation.set(0, 1.45, 0);
+          kai.screenRightArm.shoulder.rotation.set(-1.52, -0.16, -0.08);
+          kai.screenRightArm.elbow.rotation.set(-0.06, 0, 0);
+          kai.screenRightArm.wrist.rotation.set(0, -1.45, 0);
         }
         break;
       }
 
       case 'RECOVERY': {
-        // Clearly readable overextended vulnerable state! Gauntlets dropped, glowing emerald-gold core exposed!
-        themeColor = 0x39ff9f;
-        coreIntensity = 3.8 + Math.sin(t * 20) * 1.1;
+        // Overextended & vulnerable: dropped guard + emerald-cyan overload cue
+        conduitColor = 0x39ff9f;
+        knuckleColor = 0x39ff9f;
+        conduitIntensity = 3.8 + Math.sin(t * 20) * 1.1;
         const recoverEase = 1 - p * 0.45;
-        this.bossRoot.position.z = 0.42 * recoverEase;
-        this.bossRoot.position.y = hoverY - 0.18 * recoverEase;
-        this.bossTorso.rotation.x = 0.32 * recoverEase;
-        this.bossHead.rotation.x = 0.28 * recoverEase;
+        kai.root.position.z = BOSS_BASE_Z + 0.36 * recoverEase;
+        kai.pelvis.position.y = 0.89;
+        kai.torso.rotation.set(0.28 * recoverEase, 0, 0);
+        kai.head.rotation.set(0.24 * recoverEase, 0, 0);
 
-        // Arms hang wide & low leaving core wide open
-        this.screenLeftArm.shoulder.rotation.set(0.18, -0.2, -0.45);
-        this.screenLeftArm.elbow.rotation.set(-0.35, 0, 0);
-        this.screenRightArm.shoulder.rotation.set(0.18, 0.2, 0.45);
-        this.screenRightArm.elbow.rotation.set(-0.35, 0, 0);
+        // Arms hang low & wide leaving jaw and torso wide open for counters
+        kai.screenLeftArm.shoulder.rotation.set(-0.18, -0.15, -0.36);
+        kai.screenLeftArm.elbow.rotation.set(-0.62, 0, 0);
+        kai.screenLeftArm.wrist.rotation.set(0, 0.2, 0);
+
+        kai.screenRightArm.shoulder.rotation.set(-0.18, 0.15, 0.36);
+        kai.screenRightArm.elbow.rotation.set(-0.62, 0, 0);
+        kai.screenRightArm.wrist.rotation.set(0, -0.2, 0);
         break;
       }
 
       case 'DODGING': {
-        themeColor = 0x00f0ff;
         const evadeArc = Math.sin(p * Math.PI);
         const dir = snapshot.bossDodgeSide === 'LEFT' ? -1 : 1;
-        this.bossRoot.position.x = dir * 0.92 * evadeArc;
-        this.bossRoot.position.z = -0.25 * evadeArc;
-        this.bossRoot.rotation.z = dir * -0.26 * evadeArc;
+        kai.root.position.x = dir * 0.86 * evadeArc;
+        kai.root.position.z = BOSS_BASE_Z - 0.2 * evadeArc;
+        kai.pelvis.position.y = 0.88;
+        kai.torso.rotation.z = dir * -0.24 * evadeArc;
+        kai.torso.rotation.x = 0.16 * evadeArc;
+        kai.torso.rotation.y = dir * 0.22 * evadeArc;
         break;
       }
 
       case 'HIT_REACT': {
-        themeColor = 0xffbe0b;
+        conduitColor = 0xffbe0b;
+        knuckleColor = 0xffffff;
+        conduitIntensity = 4.2;
         const recoil = Math.sin((1 - p) * Math.PI * 0.5);
         const hitDir = snapshot.bossHitSide === 'LEFT' ? 1 : -1;
-        this.bossRoot.position.z = -0.28 * recoil;
-        this.bossTorso.rotation.x = -0.32 * recoil;
-        this.bossTorso.rotation.y = hitDir * 0.35 * recoil;
-        this.bossHead.rotation.x = -0.35 * recoil;
+        kai.root.position.z = BOSS_BASE_Z - 0.24 * recoil;
+        kai.torso.rotation.x = -0.28 * recoil;
+        kai.torso.rotation.y = hitDir * 0.34 * recoil;
+        kai.head.rotation.x = -0.36 * recoil;
+        kai.head.rotation.y = hitDir * 0.42 * recoil;
         break;
       }
 
       case 'KO': {
-        themeColor = 0x334155;
-        coreIntensity = 0.3;
+        conduitColor = 0x4a2511;
+        knuckleColor = 0x3b2314;
+        conduitIntensity = 0.25;
         const fall = Math.min(1, p * 1.4);
-        this.bossRoot.position.y = 1.38 - fall * 0.85;
-        this.bossRoot.position.z = -fall * 0.7;
-        this.bossTorso.rotation.x = 0.65 * fall;
-        this.bossHead.rotation.x = 0.55 * fall;
-        this.screenLeftArm.shoulder.rotation.set(0.35, 0, -0.5);
-        this.screenRightArm.shoulder.rotation.set(0.35, 0, 0.5);
+        // Drop heavily to one knee on the canvas
+        kai.root.position.z = BOSS_BASE_Z - fall * 0.35;
+        kai.pelvis.position.y = 0.94 - fall * 0.42;
+        kai.screenLeftLeg.hip.rotation.set(-1.05 * fall, 0, 0);
+        kai.screenLeftLeg.knee.rotation.set(1.65 * fall, 0, 0);
+        kai.screenRightLeg.hip.rotation.set(0.18 * fall, 0, 0);
+        kai.screenRightLeg.knee.rotation.set(1.42 * fall, 0, 0);
+
+        kai.torso.rotation.set(0.58 * fall, 0, 0.08 * fall);
+        kai.head.rotation.set(0.52 * fall, 0, 0);
+        kai.screenLeftArm.shoulder.rotation.set(-0.25, 0, -0.35);
+        kai.screenLeftArm.elbow.rotation.set(-0.4, 0, 0);
+        kai.screenRightArm.shoulder.rotation.set(-0.25, 0, 0.35);
+        kai.screenRightArm.elbow.rotation.set(-0.4, 0, 0);
         break;
       }
 
       case 'VICTORY_POSE': {
-        themeColor = 0xff1744;
-        coreIntensity = 3.8;
-        this.bossRoot.position.y = hoverY + 0.2;
-        this.screenLeftArm.shoulder.rotation.set(-2.3, 0, -0.35);
-        this.screenRightArm.shoulder.rotation.set(-2.3, 0, 0.35);
+        conduitColor = 0xff5500;
+        knuckleColor = 0xffbe0b;
+        conduitIntensity = 4.2;
+        kai.pelvis.position.y = 0.96;
+        kai.torso.rotation.set(-0.1, 0, 0);
+        kai.head.rotation.set(-0.08, 0, 0);
+        // Triumphant double-bicep / raised brawler fists
+        kai.screenLeftArm.shoulder.rotation.set(-2.25, 0.2, -0.48);
+        kai.screenLeftArm.elbow.rotation.set(-1.05, 0, 0);
+        kai.screenRightArm.shoulder.rotation.set(-2.25, -0.2, 0.48);
+        kai.screenRightArm.elbow.rotation.set(-1.05, 0, 0);
         break;
       }
     }
 
-    this.coreMaterial.color.setHex(themeColor);
-    this.coreMaterial.emissive.setHex(themeColor);
-    this.coreMaterial.emissiveIntensity = coreIntensity;
-    this.visorMaterial.color.setHex(themeColor);
-    this.visorMaterial.emissive.setHex(themeColor);
-    this.coreLight.color.setHex(themeColor);
-    this.screenLeftArm.knuckleGlow.color.setHex(themeColor);
-    this.screenLeftArm.knuckleGlow.emissive.setHex(themeColor);
-    this.screenRightArm.knuckleGlow.color.setHex(themeColor);
-    this.screenRightArm.knuckleGlow.emissive.setHex(themeColor);
+    kai.cyberConduitMat.color.setHex(conduitColor);
+    kai.cyberConduitMat.emissive.setHex(conduitColor);
+    kai.cyberConduitMat.emissiveIntensity = conduitIntensity;
+
+    kai.knuckleStudMat.color.setHex(knuckleColor);
+    kai.knuckleStudMat.emissive.setHex(knuckleColor);
+    kai.knuckleStudMat.emissiveIntensity = conduitIntensity * 1.05;
+
+    kai.honeycombMat.emissive.setHex(conduitColor);
+    kai.honeycombMat.emissiveIntensity = conduitIntensity * 0.92;
+
+    kai.faceImplantMat.emissive.setHex(conduitColor);
+    kai.faceImplantMat.emissiveIntensity = Math.max(0.4, conduitIntensity * 0.85);
+
+    kai.cyberGlowLight.color.setHex(conduitColor);
+    kai.cyberGlowLight.intensity = conduitIntensity * 0.9;
   }
 
-  private setGuardArmPose(arm: ArmRig, sideSign: -1 | 1, t: number): void {
-    const weave = Math.sin(t * 3.8 + sideSign) * 0.06;
-    arm.shoulder.rotation.set(-0.55 + weave, sideSign * -0.18, sideSign * 0.14);
-    arm.elbow.rotation.set(-0.82 - weave * 0.5, sideSign * -0.22, 0);
+  private setDefaultLegStance(bounce: number): void {
+    const kneeFlex = 0.22 + bounce * 1.4;
+    // Screen-Left leg (Kai's right) slightly forward; Screen-Right leg slightly back
+    this.kai.screenLeftLeg.hip.rotation.set(-0.14 - bounce * 0.7, 0.06, -0.05);
+    this.kai.screenLeftLeg.knee.rotation.set(kneeFlex, 0, 0);
+    this.kai.screenLeftLeg.ankle.rotation.set(-kneeFlex + 0.14, 0, 0.05);
+
+    this.kai.screenRightLeg.hip.rotation.set(0.1 - bounce * 0.7, -0.1, 0.06);
+    this.kai.screenRightLeg.knee.rotation.set(kneeFlex + 0.04, 0, 0);
+    this.kai.screenRightLeg.ankle.rotation.set(-kneeFlex - 0.12, 0, -0.06);
+  }
+
+  private setGuardArmPose(arm: KaiArmRig, sideSign: -1 | 1, t: number): void {
+    const weave = Math.sin(t * 3.8 + sideSign) * 0.055;
+    // Tucked elbows, wrapped cyber-fists protecting jawline & cheekbones
+    arm.shoulder.rotation.set(
+      -0.46 + weave,
+      sideSign * -0.15,
+      sideSign * 0.18
+    );
+    arm.elbow.rotation.set(-1.98 - weave * 0.45, 0, -sideSign * 0.34);
+    arm.wrist.rotation.set(0, -sideSign * 0.38, 0);
   }
 
   private updateTelegraphRing(
@@ -1115,9 +909,9 @@ export class ArenaScene {
     pulse: number
   ): void {
     const mat = ring.material as THREE.MeshBasicMaterial;
-    mat.opacity = 0.45 + pulse * 0.45;
+    mat.opacity = 0.48 + pulse * 0.45;
     mat.color.setHex(progress > 0.65 ? 0xff1744 : 0xff9f0a);
-    const scale = 1.6 - progress * 0.75;
+    const scale = 1.65 - progress * 0.72;
     ring.scale.setScalar(scale);
   }
 
