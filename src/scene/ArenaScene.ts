@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { bindOpponentAvatar, buildMichelleView, disposeFighterAvatar, loadFighterAvatar, type FirstPersonArm } from './FighterAvatars';
 import { CombatSnapshot } from '../game/combatEngine';
 import { CombatEvent } from '../shared/types';
 import {
@@ -46,6 +47,11 @@ export class ArenaScene {
   private currentCamX = 0;
   private currentCamRoll = 0;
   private resizeHandler: () => void;
+  private updateOpponentAvatar?: () => void;
+  private opponentAvatar?: THREE.Group;
+  private playerAvatar?: THREE.Group;
+  private playerAvatarArms?: [FirstPersonArm, FirstPersonArm];
+  private disposed = false;
 
   constructor(container: HTMLElement) {
     this.renderer = new THREE.WebGLRenderer({
@@ -83,11 +89,12 @@ export class ArenaScene {
     this.kai.root.position.set(0, 0, BOSS_BASE_Z);
     this.scene.add(this.kai.root);
 
-    // Build matching first-person cyber-brawler hands & forearms attached to camera
+    // First-person guard and punch anchors, with procedural meshes as a loading fallback.
     this.playerLeftHand = createPlayerBrawlerHand(-1);
     this.playerRightHand = createPlayerBrawlerHand(1);
     this.camera.add(this.playerLeftHand.group);
     this.camera.add(this.playerRightHand.group);
+    void this.loadAvatars();
 
     // Impact shockwave ring & spark pool
     const ringGeo = new THREE.RingGeometry(0.18, 0.28, 32);
@@ -549,11 +556,48 @@ export class ArenaScene {
 
     // Animate KAI_THE_BRAWLER according to explicit combat state machine
     this.animateKaiBrawler(snapshot, dt);
+    this.updateOpponentAvatar?.();
 
     // Update sparks & shockwave
     this.updateFX(dt);
 
     this.renderer.render(this.scene, this.camera);
+  }
+
+  private async loadAvatars(): Promise<void> {
+    const install = async (
+      file: Parameters<typeof loadFighterAvatar>[0],
+      attach: (model: THREE.Group) => void,
+    ) => {
+      const model = await loadFighterAvatar(file);
+      if (this.disposed) {
+        disposeFighterAvatar(model);
+        return;
+      }
+      try {
+        attach(model);
+      } catch (error) {
+        disposeFighterAvatar(model);
+        throw error;
+      }
+    };
+
+    await Promise.all([
+      install('readyplayer.me.glb', (model) => {
+        this.updateOpponentAvatar = bindOpponentAvatar(model, this.kai);
+        this.opponentAvatar = model;
+        this.updateOpponentAvatar();
+      }).catch((error: unknown) => console.warn('Opponent avatar unavailable', error)),
+      install('Michelle.glb', (model) => {
+        const [left, right] = buildMichelleView(model);
+        for (const [hand, arm] of [[this.playerLeftHand, left], [this.playerRightHand, right]] as const) {
+          for (const child of hand.group.children) child.visible = false;
+          hand.group.add(arm.mesh);
+        }
+        this.playerAvatarArms = [left, right];
+        this.playerAvatar = model;
+      }).catch((error: unknown) => console.warn('Michelle avatar unavailable', error)),
+    ]);
   }
 
   private animatePlayerHands(snapshot: CombatSnapshot): void {
@@ -614,6 +658,8 @@ export class ArenaScene {
       2.6 + pulse * 0.4 + rightExtend * 2.6;
     this.playerRightHand.honeycombMat.emissiveIntensity =
       2.4 + pulse * 0.5 + rightExtend * 1.8;
+    this.playerAvatarArms?.[0].updateReach(leftExtend);
+    this.playerAvatarArms?.[1].updateReach(rightExtend);
   }
 
   private animateKaiBrawler(snapshot: CombatSnapshot, dt: number): void {
@@ -876,7 +922,7 @@ export class ArenaScene {
     kai.faceImplantMat.emissiveIntensity = Math.max(0.4, conduitIntensity * 0.85);
 
     kai.cyberGlowLight.color.setHex(conduitColor);
-    kai.cyberGlowLight.intensity = conduitIntensity * 0.9;
+    kai.cyberGlowLight.intensity = conduitIntensity * (this.opponentAvatar ? 0.12 : 0.9);
   }
 
   private setDefaultLegStance(bounce: number): void {
@@ -946,6 +992,14 @@ export class ArenaScene {
 
   public dispose(): void {
     window.removeEventListener('resize', this.resizeHandler);
+    this.disposed = true;
+    this.updateOpponentAvatar = undefined;
+    if (this.opponentAvatar) disposeFighterAvatar(this.opponentAvatar);
+    for (const arm of this.playerAvatarArms ?? []) {
+      arm.mesh.geometry.dispose();
+      arm.mesh.removeFromParent();
+    }
+    if (this.playerAvatar) disposeFighterAvatar(this.playerAvatar);
     this.renderer.dispose();
   }
 }

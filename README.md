@@ -2,7 +2,7 @@
 
 A laptop-first 3D browser boxing game built with **Vite**, **TypeScript**, **Three.js**, **MediaPipe Tasks Vision** (Pose Landmarker), **Web Bluetooth**, and a local **Node/Express** server.
 
-Step into a procedural neon industrial arena against **KRONOS-V**, an original floating combat robot with hydraulic articulated gauntlets, a state-reactive plasma core, readable windups, and adaptive between-exchange tactics powered by the **Gemini Decisions API (`gemini-decision-1`)** with a zero-credential deterministic local AI fallback.
+Step into a procedural neon industrial arena against **Kai the Brawler**, an opponent with readable windups and adaptive between-exchange tactics powered by the **Gemini Decisions API (`gemini-decision-1`)** with a zero-credential deterministic local AI fallback.
 
 Every match is **100% playable out of the box with zero credentials and no wearable**.
 
@@ -18,6 +18,10 @@ npm start
 Then open **`http://localhost:5173`** in a desktop browser (Chrome or Edge recommended on macOS/Windows/Linux for Web Bluetooth support).
 
 `npm start` (aliased to `npm run dev`) launches the Node API server and Vite frontend together on a single origin (`http://localhost:5173`), automatically staging the local MediaPipe WASM runtime files if needed.
+
+### Fighter Models
+
+Kai uses the [Ready Player Me example avatar](https://threejs.org/examples/webgpu_animation_retargeting_readyplayer.html). The challenger uses [Michelle](https://threejs.org/examples/webgpu_skinning.html), shown as her hands and arms in first person. Both models load from the official Three.js example host. If either request fails, the corresponding procedural fighter stays visible and the match remains playable. The demo GLBs are hosted upstream. Verify model-specific reuse and redistribution terms before publishing or bundling copies.
 
 ### Build & Automated Tests
 
