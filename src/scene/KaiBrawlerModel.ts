@@ -1,17 +1,5 @@
 import * as THREE from 'three';
 
-export const KAI_GUCCI_JACKET_URL =
-  'https://www.gucci.com/us/en/pr/men/ready-to-wear-for-men/outerwear-for-men/bombers-for-men/reversible-gg-canvas-jacket-p-722511ZALX21043';
-export const KAI_GUCCI_JACKET_TITLE = 'Reversible GG Canvas Bomber Jacket';
-export const KAI_GUCCI_STYLE_CODE = '722511 ZALX2 1043';
-
-export const KAI_OUTFIT_PRODUCT_ID = 'gid://shopify/Product/7983594340374';
-export const KAI_OUTFIT_HANDLE = 'puffer-jacket';
-export const KAI_OUTFIT_TITLE = 'Puffer Jacket';
-export const KAI_OUTFIT_DEFAULT_COLOR = 'Olive';
-export const KAI_OUTFIT_DEFAULT_SIZE = 'Medium';
-export const KAI_OUTFIT_DEFAULT_VARIANT_ID = 'gid://shopify/ProductVariant/43696967680022';
-
 export function createGucciGGCanvasTexture(): THREE.CanvasTexture | null {
   if (typeof document === 'undefined') return null;
   const canvas = document.createElement('canvas');

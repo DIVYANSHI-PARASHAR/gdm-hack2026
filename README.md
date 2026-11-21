@@ -117,27 +117,8 @@ cp .env.example .env
 
 After a fight, open **Match Recap** for observed punch accuracy by hand, lean direction, and hits taken per resolved attack from each direction. Opening the recap sends aggregate counts to Gemini 4 Hydrogen for a short interpretation. Exact counts and percentages remain available offline.
 
-## Post-Match "Shop the Look" & Agentic Commerce (Shopify + Gemini 4 Neon)
+## Post-match jacket reveal
 
-After a match, place both hands at your temples and hold for about **340 ms**. Keep both hands visible to the camera. The camera moves in to show Kai's **Gucci Reversible GG Canvas Bomber** (style **722511 ZALX2 1043**), and Shop the Look opens the top similar Shopify listing. Press **G** on the result screen to trigger the same flow without a camera.
+On the result screen, hold your right arm straight overhead for about **340 ms** with your face and right wrist visible to the camera. You can also press **G**. The camera moves in to show Kai’s Gucci Reversible GG Canvas Jacket (style **722511 ZALX2 1043**). Select **View on Gucci.com** to open the jacket in a new tab.
 
-### Left-Docked Outfit Dialog & Instant 1-Click Shopify Purchase
-- **Separated from Game State**:
-  - Match stats, heart rate, and estimated calories stay cleanly in the **right** result panel (`#screen-result`), while **Kai's Arena Outfit** opens in its own dedicated **left** dialog (`#outfit-dock`) so the 3D arena center stays clear.
-- **Direct "Buy Now?" Prompt & Connected Shopify Purchase (`POST /api/shop/purchase`)**:
-  - After the head grab, the left dialog immediately shows the Gucci reference and similar Shopify jacket details (image, merchant, `$90.00 CAD`, size & color pills) and asks: **"Would you like to buy this Shopify match?"** (**Yes, Buy It Now** / **No, Thanks**).
-  - Clicking **Yes, Buy It Now** executes a 1-click purchase using the connected Shopify buyer profile (`Account ⚙` in the dialog or `SHOPIFY_BUYER_*` / `SHOPIFY_STORE_DOMAIN` / `SHOPIFY_ADMIN_TOKEN` in `.env`), displaying an instant **Shopify Order Confirmed** receipt card (`#SP-...`) with a link to view on Shopify.
-- **Gemini 4 Neon Shopping Agent (`server/geminiShopping.ts`)**:
-  - Expand **"Ask Gemini 4 Neon about sizes or colors"** inside the left dialog to ask natural-language inventory questions (e.g., *"Do you have this in black, medium?"*, *"I'll take Kai's Olive in Medium"*, or *"yes buy it"*).
-- **Strict Privacy Separation**:
-  - Webcam video frames, pose landmarks, and Fitbit/health data are strictly forbidden from entering commerce endpoints (`sanitizeShoppingInput`).
-
-### Verification & Demo Walkthrough
-Run the automated test suite verifying all state machine, gesture, and commerce requirements:
-```bash
-npm test
-```
-The test suite verifies:
-1. `tests/headGrabGesture.test.ts`: A two-handed hold triggers once per match. A guard, a punch, a hug, one hand, or interrupted tracking cannot complete the hold.
-2. `tests/shopifyCommerce.test.ts`: Live/fallback product metadata lookup; exact variant matching for Olive Medium; honest handling of unavailable color (Black) and size (XL) with alternative suggestions; ambiguous color clarification; cart creation with hosted checkout URL; rejection of biometric or video payloads.
-3. `tests/combatEngine.test.ts` & `tests/gestureRecognizer.test.ts`: Full combat loops, leans, punches, and state machine integrity.
+Run `npm test` to verify gesture timing, right-arm tracking, and match resets.

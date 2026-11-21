@@ -54,7 +54,7 @@ export class ArenaScene {
   private playerAvatar?: THREE.Group;
   private playerAvatarArms?: [THREE.Mesh, THREE.Mesh];
   private disposed = false;
-  private headGrabProgress = 0;
+  private rightHandRaiseProgress = 0;
   private outfitRevealed = false;
 
   constructor(container: HTMLElement) {
@@ -124,12 +124,12 @@ export class ArenaScene {
     window.addEventListener('resize', this.resizeHandler);
   }
 
-  public setHeadGrabProgress(progress: number): void {
-    this.headGrabProgress = progress;
+  public setRightHandRaiseProgress(progress: number): void {
+    this.rightHandRaiseProgress = progress;
   }
 
   public resetPostMatchScene(): void {
-    this.headGrabProgress = 0;
+    this.rightHandRaiseProgress = 0;
     this.outfitRevealed = false;
     this.currentCamZ = 3.45;
   }
@@ -556,7 +556,7 @@ export class ArenaScene {
         ? Math.sin(snapshot.playerPunchProgress * Math.PI) * -0.09
         : 0;
 
-    const targetCamZ = this.outfitRevealed ? 2.3 : 3.45 - this.headGrabProgress * 0.75;
+    const targetCamZ = this.outfitRevealed ? 2.3 : 3.45 - this.rightHandRaiseProgress * 0.75;
     this.currentCamZ += (targetCamZ - this.currentCamZ) * (1 - Math.exp(-dtSec * 8));
 
     this.cameraRig.position.set(

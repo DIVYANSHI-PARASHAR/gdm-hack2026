@@ -129,266 +129,53 @@
 
       <!-- Post-match outfit panel -->
       <aside id="outfit-dock" class="outfit-dock hidden" aria-label="Kai's Outfit">
-        <!-- Head-grab prompt -->
-        <div id="head-grab-prompt-banner" class="head-grab-prompt-banner">
-          <div class="head-grab-prompt-content">
-            <span class="head-grab-emoji">🛍</span>
-            <div class="head-grab-prompt-text">
-              <div class="head-grab-title-row">
-                <strong>Grab Your Head to Shop the Look</strong>
-                <span id="head-grab-sensor-pill" class="pill pill-green">● Pose Live</span>
+        <!-- Right-hand raise prompt -->
+        <div id="right-hand-raise-prompt-banner" class="right-hand-raise-prompt-banner">
+          <div class="right-hand-raise-prompt-content">
+            <span class="right-hand-raise-emoji">🛍</span>
+            <div class="right-hand-raise-prompt-text">
+              <div class="right-hand-raise-title-row">
+                <strong>Raise Your Right Hand</strong>
+                <span id="right-hand-raise-sensor-pill" class="pill pill-green">● Pose Live</span>
               </div>
-              <p id="head-grab-pose-hint">
-                Kai wears the <strong>Gucci Reversible GG Canvas Bomber</strong> — hold both hands at your temples or press <kbd>G</kbd> to shop similar jackets.
+              <p id="right-hand-raise-pose-hint">
+                Hold your right hand above your head and keep your wrist in view. Press <kbd>G</kbd> to reveal Kai’s jacket without the camera.
               </p>
             </div>
           </div>
-          <div id="head-grab-progress-wrap" class="head-grab-progress-wrap">
-            <div class="head-grab-progress-label">
-              <span id="head-grab-progress-text">Place both hands at your temples…</span>
-              <span id="head-grab-progress-pct">0%</span>
+          <div id="right-hand-raise-progress-wrap" class="right-hand-raise-progress-wrap">
+            <div class="right-hand-raise-progress-label">
+              <span id="right-hand-raise-progress-text">Raise your right hand above your head…</span>
+              <span id="right-hand-raise-progress-pct">0%</span>
             </div>
-            <div class="head-grab-progress-track">
-              <div id="head-grab-progress-fill" class="head-grab-progress-fill"></div>
+            <div class="right-hand-raise-progress-track">
+              <div id="right-hand-raise-progress-fill" class="right-hand-raise-progress-fill"></div>
             </div>
           </div>
-          <button id="btn-enable-head-grab-cam" type="button" class="btn btn-sm btn-outline-cyan head-grab-cam-btn hidden">
+          <button id="btn-enable-right-hand-raise-cam" type="button" class="btn btn-sm btn-outline-cyan right-hand-raise-cam-btn hidden">
             Enable Camera
           </button>
         </div>
 
-        <!-- Minimized pill if player closed outfit -->
         <button id="btn-reopen-outfit" type="button" class="btn btn-sm btn-outline-cyan outfit-reopen-btn hidden">
-          🧥 View Kai's Gucci Bomber &amp; Shopify Matches
+          View Kai’s jacket
         </button>
 
-        <!-- Revealed outfit panel -->
-        <section id="shop-the-look-panel" class="shop-the-look-panel hidden">
+        <section id="shop-the-look-panel" class="shop-the-look-panel hidden" aria-labelledby="outfit-title">
           <div class="shop-header">
-            <div class="shop-title-area">
-              <span class="shop-eyebrow">GEMINI STYLE MATCH // SHOPIFY</span>
-              <h3 class="shop-title">KAI'S JACKET &amp; SIMILAR FINDS</h3>
-            </div>
-            <div class="shop-header-actions">
-              <span id="shop-status-badge" class="pill pill-green">Shopify Live</span>
-              <button id="btn-toggle-shopify-account" type="button" class="btn-chip" title="Connected Shopify profile">
-                Account ⚙
-              </button>
-              <button id="btn-close-outfit" type="button" class="icon-btn" title="Close outfit dialog">✕</button>
-            </div>
+            <h3 id="outfit-title" class="shop-title">Kai’s jacket</h3>
+            <button id="btn-close-outfit" type="button" class="icon-btn" aria-label="Close outfit panel">✕</button>
           </div>
-
-          <!-- Connected Shopify Store & Buyer Profile Drawer -->
-          <form id="shopify-account-drawer" class="shopify-account-drawer hidden">
-            <div class="account-drawer-title">Connected Shopify Buyer Details</div>
-            <div class="account-fields-grid">
-              <label>
-                <span>Store Domain</span>
-                <input id="shop-conn-domain" type="text" value="mock.shop" autocomplete="off" />
-              </label>
-              <label>
-                <span>Shop Pay Email</span>
-                <input id="shop-conn-email" type="email" value="challenger@ironpulse.gg" autocomplete="off" />
-              </label>
-              <label class="account-span-full">
-                <span>Shipping Address</span>
-                <input id="shop-conn-address" type="text" value="150 Elgin St, Ottawa, ON K2P 1L4, CA" autocomplete="off" />
-              </label>
-            </div>
-            <div class="account-drawer-actions">
-              <button type="submit" class="btn btn-sm btn-cyan">Save Shopify Details</button>
-              <span id="shop-conn-saved" class="conn-saved-msg hidden">✓ Connected</span>
-            </div>
-          </form>
-
-          <div class="product-card-body">
-            <!-- Reference Luxury Jacket Worn by Kai (Gucci 722511 ZALX2 1043) -->
-            <div class="gucci-reference-card">
-              <img id="gucci-ref-img" alt="Gucci Reversible GG Canvas Jacket" class="gucci-ref-img" />
-              <div class="gucci-ref-meta">
-                <div class="gucci-ref-eyebrow">WORN BY KAI · LUXURY ORIGINAL</div>
-                <strong id="gucci-ref-title" class="gucci-ref-title">Gucci Reversible GG Canvas Jacket</strong>
-                <div id="gucci-ref-sub" class="gucci-ref-sub">Style 722511 ZALX2 1043 · $3,200 USD</div>
-                <a
-                  id="gucci-ref-link"
-                  href="https://www.gucci.com/us/en/pr/men/ready-to-wear-for-men/outerwear-for-men/bombers-for-men/reversible-gg-canvas-jacket-p-722511ZALX21043"
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  class="gucci-ref-link"
-                >
-                  View Reference on Gucci.com ↗
-                </a>
-              </div>
-            </div>
-
-            <!-- Auto-Open Shopify Status Banner -->
-            <div id="shopify-auto-open-banner" class="shopify-auto-open-banner">
-              <span id="shopify-auto-open-text">✨ Gemini found similar jackets — opening Shopify page...</span>
-              <a
-                id="btn-open-shopify-direct"
-                href="https://demostore.hydrogen.mock.shop/products/puffer-jacket"
-                target="_blank"
-                rel="noopener noreferrer"
-                class="btn btn-sm btn-gold"
-              >
-                Open Shopify Page ↗
-              </a>
-            </div>
-
-            <!-- Gemini Similar Shopify Products List -->
-            <div class="similar-section">
-              <div class="similar-header-row">
-                <span class="similar-heading">🤖 GEMINI SIMILAR PRODUCTS ON SHOPIFY</span>
-              </div>
-              <p id="gemini-match-summary" class="gemini-match-summary">
-                Matching Kai's Reversible GG Canvas Bomber against live Shopify outerwear...
-              </p>
-              <div id="similar-matches-list" class="similar-matches-list"></div>
-            </div>
-
-            <!-- Top Match Details & Quick Size/Color -->
-            <div class="product-hero-row">
-              <div class="product-image-wrap">
-                <img
-                  id="shop-product-img"
-                  src="https://cdn.shopify.com/mock-shop-production-media/_seeds/demostore/d0d927ae26c636dae24fae128e1b424ccd5ea76c9a921ac293389f70a688a9dc.jpg"
-                  alt="Matched Shopify Jacket"
-                  class="product-img"
-                />
-                <span class="product-worn-tag">#1 Shopify Match</span>
-              </div>
-              <div class="product-hero-meta">
-                <div class="product-headline">
-                  <h4 id="shop-product-title">Puffer Jacket</h4>
-                  <span id="shop-product-price" class="product-price-tag">$90.00 CAD</span>
-                </div>
-                <div class="product-merchant-line">
-                  Merchant: <strong id="shop-merchant-name">Mock.shop</strong>
-                </div>
-                <p id="shop-product-desc" class="product-description">
-                  Light durable nylon puffer jacket matching Kai's zip bomber silhouette.
-                </p>
-              </div>
-            </div>
-
-            <!-- Quick Size & Color Selectors -->
-            <div class="options-selector">
-              <div class="option-group">
-                <span class="option-title">Size:</span>
-                <div id="shop-size-pills" class="pill-group">
-                  <button type="button" class="size-pill" data-size="Small">Small</button>
-                  <button type="button" class="size-pill active" data-size="Medium">Medium</button>
-                  <button type="button" class="size-pill" data-size="Large">Large</button>
-                </div>
-              </div>
-              <div class="option-group">
-                <span class="option-title">Color:</span>
-                <div id="shop-color-pills" class="pill-group">
-                  <button type="button" class="color-pill active" data-color="Olive">Olive (Kai's)</button>
-                  <button type="button" class="color-pill" data-color="Green">Green</button>
-                  <button type="button" class="color-pill" data-color="Ocean">Ocean</button>
-                  <button type="button" class="color-pill" data-color="Purple">Purple</button>
-                  <button type="button" class="color-pill" data-color="Red">Red</button>
-                </div>
-              </div>
-            </div>
-
-            <!-- Direct Purchase Question Card -->
-            <div id="variant-review-card" class="variant-review-card">
-              <div class="buy-question-header">
-                <strong class="buy-question-title">Would you like to buy this Shopify match?</strong>
-                <span class="review-stock-badge">In Stock</span>
-              </div>
-              <div class="buy-selection-summary">
-                <strong id="rev-item-title">Puffer Jacket</strong> ·
-                <span id="rev-color">Olive</span> / <span id="rev-size">Medium</span> ·
-                <strong id="rev-price" class="review-price-val">$90.00 CAD</strong>
-                <span class="rev-merchant-wrap">(<span id="rev-merchant">Mock.shop</span>)</span>
-              </div>
-              <div id="rev-buyer-line" class="rev-buyer-line">
-                Instant purchase with connected Shopify profile (<span id="rev-buyer-email">challenger@ironpulse.gg</span>)
-              </div>
-
-              <div class="buy-decision-row">
-                <button id="btn-continue-checkout" type="button" class="btn btn-md btn-gold btn-buy-yes">
-                  Yes, Buy It Now
-                </button>
-                <button id="btn-decline-outfit" type="button" class="btn btn-md btn-ghost btn-buy-no">
-                  No, Thanks
-                </button>
-                <div id="checkout-spinner" class="spinner-inline hidden"></div>
-              </div>
-              <p id="checkout-notice" class="checkout-notice">
-                Uses your connected Shopify details for instant 1-click purchase.
-              </p>
-            </div>
-
-            <!-- Instant Purchased Confirmation Receipt (Shown after clicking Yes) -->
-            <div id="purchase-receipt-card" class="purchase-receipt-card hidden">
-              <div class="receipt-top-row">
-                <span class="receipt-check">✓</span>
-                <div>
-                  <strong class="receipt-heading">Outfit Purchased!</strong>
-                  <div class="receipt-order-meta">
-                    Shopify Order <strong id="receipt-order-num">#SP-9042</strong> · <span id="receipt-merchant">Mock.shop</span>
-                  </div>
-                </div>
-              </div>
-              <div class="receipt-details-box">
-                <div id="receipt-item-line" class="receipt-item-line">Puffer Jacket — Olive / Medium</div>
-                <div id="receipt-total-line" class="receipt-total-line">$90.00 CAD · Paid via Shop Pay</div>
-                <div id="receipt-shipping-line" class="receipt-shipping-line">
-                  Shipping to 150 Elgin St, Ottawa, ON K2P 1L4, CA
-                </div>
-              </div>
-              <div class="receipt-footer-actions">
-                <a id="receipt-shopify-link" href="https://mock.shop" target="_blank" rel="noopener noreferrer" class="receipt-link">
-                  View on Shopify ↗
-                </a>
-                <button id="btn-buy-another" type="button" class="btn-chip">
-                  Change Size / Buy Another
-                </button>
-              </div>
-            </div>
-
-            <!-- Optional Collapsible Gemini 4 Neon Shopping Agent -->
-            <details id="agent-drawer" class="agent-drawer">
-              <summary class="agent-drawer-summary">
-                <span>💬 Ask Gemini 4 Neon about sizes or colors</span>
-                <span id="shop-agent-badge" class="pill pill-cyan">Gemini 4 Neon</span>
-              </summary>
-              <div class="shopping-agent-box">
-                <div id="agent-chat-log" class="agent-chat-log">
-                  <div class="chat-msg chat-assistant">
-                    <strong>Gemini 4 Neon:</strong>
-                    <span>The Shopify match is a Puffer Jacket in Olive, Medium ($90.00 CAD). Ask me about any color or size!</span>
-                  </div>
-                </div>
-                <div class="quick-prompts">
-                  <button type="button" class="quick-prompt-btn" data-query="Do you have this in black, medium?">
-                    "Black, medium?"
-                  </button>
-                  <button type="button" class="quick-prompt-btn" data-query="I'll take Kai's Olive in Medium">
-                    "Olive, medium"
-                  </button>
-                  <button type="button" class="quick-prompt-btn" data-query="Do you have Ocean in Large?">
-                    "Ocean, large?"
-                  </button>
-                </div>
-                <form id="agent-chat-form" class="agent-input-row">
-                  <input
-                    id="agent-chat-input"
-                    type="text"
-                    placeholder="Ask about sizes/colors or say 'yes buy it'..."
-                    autocomplete="off"
-                    maxlength="200"
-                  />
-                  <button id="btn-agent-send" type="submit" class="btn btn-sm btn-cyan">
-                    Ask
-                  </button>
-                </form>
-              </div>
-            </details>
+          <div class="gucci-reference-card">
+            <h4 class="gucci-ref-title">Gucci Reversible GG Canvas Jacket</h4>
+            <p class="gucci-ref-sub">Style 722511 ZALX2 1043</p>
+            <a
+              id="gucci-ref-link"
+              href="https://www.gucci.com/us/en/pr/men/ready-to-wear-for-men/outerwear-for-men/bombers-for-men/reversible-gg-canvas-jacket-p-722511ZALX21043"
+              target="_blank"
+              rel="noopener noreferrer"
+              class="gucci-ref-link"
+            >View on Gucci.com ↗</a>
           </div>
         </section>
       </aside>

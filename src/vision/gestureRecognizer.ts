@@ -37,15 +37,16 @@ export interface GestureFrameResult {
     leftWrist: { x: number; y: number };
     rightWrist: { x: number; y: number };
   } | null;
-  headGrabHoldProgress: number; // 0..1 hold progress toward head grab
-  headGrabTriggered: boolean;   // true once hold threshold is reached
+  rightHandRaiseHoldProgress: number; // 0..1 hold progress toward right-hand raise
+  rightHandRaiseTriggered: boolean;   // true once hold threshold is reached
 }
 
 const MIN_LANDMARK_CONFIDENCE = 0.45;
 const TRACKING_LOSS_HOLD_MS = 360;
 const CALIBRATION_REQUIRED_SAMPLES = 16;
-const HEAD_GRAB_HOLD_MS = 340;
-const HEAD_GRAB_MAX_FRAME_GAP_MS = 150;
+const RIGHT_HAND_RAISE_HOLD_MS = 340;
+const RIGHT_HAND_RAISE_MAX_FRAME_GAP_MS = 400;
+const RIGHT_HAND_RAISE_MAX_FRAME_CREDIT_MS = 120;
 
 const LEAN_ENTER_THRESHOLD = 0.26;
 const LEAN_EXIT_THRESHOLD = 0.14;
@@ -88,14 +89,16 @@ export class GestureRecognizer {
   private lowConfidenceSinceMs: number | null = null;
   private trackingLost = false;
 
-  private headGrabHoldMs = 0;
-  private wasGrabbingHead = false;
-  private headGrabFired = false;
+  private rightHandRaiseHoldMs = 0;
+  private lastRightHandRaiseFrameMs: number | null = null;
+  private wasRightHandRaised = false;
+  private rightHandRaiseFired = false;
 
-  public resetHeadGrabState(): void {
-    this.headGrabHoldMs = 0;
-    this.wasGrabbingHead = false;
-    this.headGrabFired = false;
+  public resetRightHandRaiseState(): void {
+    this.lastRightHandRaiseFrameMs = null;
+    this.rightHandRaiseHoldMs = 0;
+    this.wasRightHandRaised = false;
+    this.rightHandRaiseFired = false;
   }
 
   public resetCalibration(): void {
@@ -106,7 +109,7 @@ export class GestureRecognizer {
     this.leftArmPhase = 'GUARD';
     this.rightArmPhase = 'GUARD';
     this.prevTimestampMs = null;
-    this.resetHeadGrabState();
+    this.resetRightHandRaiseState();
   }
 
   public isCalibrated(): boolean {
@@ -126,8 +129,9 @@ export class GestureRecognizer {
     landmarks: PoseLandmarkPoint[] | null | undefined,
     timestampMs: number
   ): GestureFrameResult {
+    const raise = this.evaluateRightHandRaise(landmarks?.[0], landmarks?.[16], timestampMs);
     if (!landmarks || landmarks.length < 17) {
-      return this.handleMissingPose(timestampMs, 0);
+      return { ...this.handleMissingPose(timestampMs, 0), ...raise };
     }
 
     const nose = landmarks[0];
@@ -159,7 +163,7 @@ export class GestureRecognizer {
       (rShoulder.visibility ?? 1) >= 0.38;
 
     if (!shouldersVisible || coreConfidence < MIN_LANDMARK_CONFIDENCE) {
-      return this.handleMissingPose(timestampMs, avgConfidence);
+      return { ...this.handleMissingPose(timestampMs, avgConfidence), ...raise };
     }
 
     // Tracking is valid
@@ -195,17 +199,11 @@ export class GestureRecognizer {
     const leftExt = this.computeArmExtension(mLSh, mLEl, mLWr, -1, liveShoulderWidth);
     const rightExt = this.computeArmExtension(mRSh, mREl, mRWr, 1, liveShoulderWidth);
 
-    const headGrabFrameMs =
-      this.prevTimestampMs === null ? 0 : timestampMs - this.prevTimestampMs;
-    const { headGrabHoldProgress, headGrabTriggered } = this.evaluateHeadGrab(
-      nose, lWrist, rWrist, liveShoulderWidth, headGrabFrameMs
-    );
-
     // Handle calibration collection
     if (this.isCalibrating || !this.calibration) {
       // Ensure user is reasonably centered inside camera frame during calibration
-      // (Don't sample head-grab poses as neutral boxing guard!)
-      if (upperBodyMx > 0.2 && upperBodyMx < 0.8 && !this.wasGrabbingHead) {
+      // (Don't sample right-hand-raise poses as neutral boxing guard!)
+      if (upperBodyMx > 0.2 && upperBodyMx < 0.8 && !this.wasRightHandRaised) {
         this.calibSamples.push({
           centerMx: upperBodyMx,
           shoulderWidth: liveShoulderWidth,
@@ -263,8 +261,7 @@ export class GestureRecognizer {
         leftExtDelta: 0,
         rightExtDelta: 0,
         mirroredKeypoints,
-        headGrabHoldProgress,
-        headGrabTriggered,
+        ...raise,
       };
     }
 
@@ -408,42 +405,36 @@ export class GestureRecognizer {
       leftExtDelta,
       rightExtDelta,
       mirroredKeypoints,
-      headGrabHoldProgress,
-      headGrabTriggered,
+      ...raise,
     };
   }
 
-  private evaluateHeadGrab(
-    nose: PoseLandmarkPoint,
-    leftWrist: PoseLandmarkPoint,
-    rightWrist: PoseLandmarkPoint,
-    shoulderWidth: number,
-    dtMs: number
-  ): { headGrabHoldProgress: number; headGrabTriggered: boolean } {
-    const leftOffset = (leftWrist.x - nose.x) / shoulderWidth;
-    const rightOffset = (rightWrist.x - nose.x) / shoulderWidth;
-    const wristAtTempleHeight = (wrist: PoseLandmarkPoint): boolean => {
-      const height = (nose.y - wrist.y) / shoulderWidth;
-      return (wrist.visibility ?? 1) >= MIN_LANDMARK_CONFIDENCE &&
-        height >= 0.08 && height <= 0.65 &&
-        Math.abs(wrist.z - nose.z) <= shoulderWidth * 0.65;
-    };
-    const grabbingHead =
-      (nose.visibility ?? 1) >= MIN_LANDMARK_CONFIDENCE &&
-      Math.min(leftOffset, rightOffset) <= -0.12 &&
-      Math.max(leftOffset, rightOffset) >= 0.12 &&
-      Math.abs(leftOffset) <= 0.65 && Math.abs(rightOffset) <= 0.65 &&
-      wristAtTempleHeight(leftWrist) && wristAtTempleHeight(rightWrist);
+  private evaluateRightHandRaise(
+    nose: PoseLandmarkPoint | undefined,
+    wrist: PoseLandmarkPoint | undefined,
+    timestampMs: number
+  ): Pick<GestureFrameResult, 'rightHandRaiseHoldProgress' | 'rightHandRaiseTriggered'> {
+    const dtMs = timestampMs - (this.lastRightHandRaiseFrameMs ?? timestampMs);
+    this.lastRightHandRaiseFrameMs = timestampMs;
 
-    this.headGrabHoldMs = grabbingHead && this.wasGrabbingHead && dtMs <= HEAD_GRAB_MAX_FRAME_GAP_MS
-      ? Math.min(HEAD_GRAB_HOLD_MS, this.headGrabHoldMs + Math.max(0, dtMs))
+    // The post-match pose only needs the face and anatomical right wrist.
+    const rightHandRaised = !!nose && !!wrist &&
+      (nose.visibility ?? 1) >= 0.35 &&
+      (wrist.visibility ?? 1) >= 0.25 &&
+      nose.y - wrist.y >= 0.08;
+    this.rightHandRaiseHoldMs = rightHandRaised && this.wasRightHandRaised &&
+      dtMs > 0 && dtMs <= RIGHT_HAND_RAISE_MAX_FRAME_GAP_MS
+      ? Math.min(
+          RIGHT_HAND_RAISE_HOLD_MS,
+          this.rightHandRaiseHoldMs + Math.min(dtMs, RIGHT_HAND_RAISE_MAX_FRAME_CREDIT_MS)
+        )
       : 0;
-    this.wasGrabbingHead = grabbingHead;
-    const headGrabTriggered = this.headGrabHoldMs === HEAD_GRAB_HOLD_MS && !this.headGrabFired;
-    this.headGrabFired ||= headGrabTriggered;
+    this.wasRightHandRaised = rightHandRaised;
+    const rightHandRaiseTriggered = this.rightHandRaiseHoldMs === RIGHT_HAND_RAISE_HOLD_MS && !this.rightHandRaiseFired;
+    this.rightHandRaiseFired ||= rightHandRaiseTriggered;
     return {
-      headGrabHoldProgress: this.headGrabHoldMs / HEAD_GRAB_HOLD_MS,
-      headGrabTriggered,
+      rightHandRaiseHoldProgress: this.rightHandRaiseHoldMs / RIGHT_HAND_RAISE_HOLD_MS,
+      rightHandRaiseTriggered,
     };
   }
 
@@ -493,7 +484,7 @@ export class GestureRecognizer {
   private handleMissingPose(
     timestampMs: number,
     confidence: number
-  ): GestureFrameResult {
+  ): Omit<GestureFrameResult, 'rightHandRaiseHoldProgress' | 'rightHandRaiseTriggered'> {
     if (this.lowConfidenceSinceMs === null) {
       this.lowConfidenceSinceMs = timestampMs;
     } else if (timestampMs - this.lowConfidenceSinceMs >= TRACKING_LOSS_HOLD_MS) {
@@ -502,8 +493,6 @@ export class GestureRecognizer {
 
     this.currentLean = 'NONE';
     this.prevTimestampMs = null;
-    this.headGrabHoldMs = 0;
-    this.wasGrabbingHead = false;
 
     return {
       calibrated: this.isCalibrated(),
@@ -519,8 +508,6 @@ export class GestureRecognizer {
       leftExtDelta: 0,
       rightExtDelta: 0,
       mirroredKeypoints: null,
-      headGrabHoldProgress: 0,
-      headGrabTriggered: false,
     };
   }
 }
