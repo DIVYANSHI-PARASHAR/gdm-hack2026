@@ -6,7 +6,7 @@
   "description": "First-person webcam motion-controlled 3D robot boxing game with Gemini Decisions API, Fitbit Air BLE live BPM, and Google Health synced calories.",
   "scripts": {
     "start": "tsx server/index.ts",
-    "dev": "tsx server/index.ts",
+    "dev": "tsx watch server/index.ts",
     "build": "tsc --noEmit && vite build",
     "preview": "NODE_ENV=production tsx server/index.ts",
     "test": "vitest run",

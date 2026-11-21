@@ -47,12 +47,23 @@ export class MatchRecap {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(counts), signal,
       });
-      if (!response.ok) throw new Error();
+      if (!response.ok) {
+        const body = await response.json().catch(() => null);
+        const detail = response.status === 404 ? 'The server is missing the recap endpoint.'
+          : body?.error || `The recap request returned HTTP ${response.status}.`;
+        throw new Error(detail);
+      }
       const { summary } = await response.json();
-      if (typeof summary !== 'string' || !summary.trim()) throw new Error();
+      if (typeof summary !== 'string' || !summary.trim()) throw new Error('The model returned an empty summary.');
       if (!signal.aborted) this.analysis.textContent = 'Gemini 4 Hydrogen · ' + summary;
-    } catch {
-      if (!signal.aborted) this.analysis.textContent = 'Gemini commentary is unavailable. The observed match rates are below.';
+    } catch (error) {
+      if (signal.aborted) return;
+      this.analysis.textContent = error instanceof Error ? error.message + ' ' : 'Recap request failed. ';
+      const retry = document.createElement('button');
+      retry.className = 'btn btn-sm btn-ghost';
+      retry.textContent = 'Retry commentary';
+      retry.onclick = () => void this.interpret(counts, signal);
+      this.analysis.append(retry);
     }
   }
 

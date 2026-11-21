@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
-import type { KaiBrawlerRig } from './KaiBrawlerModel';
+import { createGucciGGCanvasTexture, type KaiBrawlerRig } from './KaiBrawlerModel';
 
 const MODEL_BASE = 'https://threejs.org/examples/models/gltf/';
 const DOWN = new THREE.Vector3(0, -1, 0);
@@ -113,6 +113,24 @@ export function bindOpponentAvatar(model: THREE.Group, rig: KaiBrawlerRig): () =
     bind(leg.knee, side + 'Leg', side + 'Foot');
     bind(leg.ankle, side + 'Foot');
     closeHand(model, side);
+  }
+
+  // Dress the opponent avatar's upper-body jacket in the Gucci Reversible GG Canvas Bomber
+  const ggJacketTex = createGucciGGCanvasTexture();
+  if (ggJacketTex) {
+    model.traverse((object) => {
+      if (
+        object instanceof THREE.Mesh &&
+        /Outfit_Top|Jacket|Shirt|Top/i.test(object.name)
+      ) {
+        object.material = new THREE.MeshStandardMaterial({
+          color: 0xffffff,
+          map: ggJacketTex,
+          roughness: 0.6,
+          metalness: 0.08,
+        });
+      }
+    });
   }
 
   // Keep the existing windup indicators and light, and replace the visible proxy meshes.

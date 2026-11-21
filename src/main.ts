@@ -1,3 +1,4 @@
+import { JacketShopping } from './commerce/jacketShopping';
 import './style.css';
 import { estimateCalories } from './ble/calorieEstimate';
 import { matchHeartRatePlot } from './ble/matchHeartRatePlot';
@@ -55,6 +56,9 @@ class IronPulseApp {
 
   private lastStrategyLatencyMs: number | null = null;
 
+  private outfitRevealedThisMatch = false;
+  private jacketShopping = new JacketShopping(el('jacket-shopping'));
+
   private lastFramePerfMs = performance.now();
 
   constructor() {
@@ -74,8 +78,33 @@ class IronPulseApp {
           gesture.calibrationProgress * 100
         )}%`;
 
-        if (this.controlMode !== 'webcam') return;
         const snap = this.combat.getSnapshot();
+
+        // Shop the Look is available after either control mode.
+        if (
+          (snap.phase === 'VICTORY' || snap.phase === 'DEFEAT') &&
+          !this.outfitRevealedThisMatch &&
+          !this.pendingStartAfterCalibration
+        ) {
+          this.arena.setRightHandRaiseProgress(gesture.rightHandRaiseHoldProgress);
+
+          const pct = Math.round(gesture.rightHandRaiseHoldProgress * 100);
+          el<HTMLDivElement>('right-hand-raise-progress-fill').style.width = `${pct}%`;
+          el<HTMLSpanElement>('right-hand-raise-progress-pct').textContent = `${pct}%`;
+          el<HTMLSpanElement>('right-hand-raise-progress-text').textContent =
+            pct > 0
+              ? 'Keep your right arm raised…'
+              : gesture.trackingValid
+                ? 'Raise your right hand above your head…'
+                : 'Step into camera view…';
+
+          if (gesture.rightHandRaiseTriggered) {
+            this.triggerShopTheLook();
+            return;
+          }
+        }
+
+        if (this.controlMode !== 'webcam') return;
 
         if (
           this.pendingStartAfterCalibration &&
@@ -106,12 +135,14 @@ class IronPulseApp {
 
     this.bindUiEvents();
     this.bindKeyboardControls();
+    this.syncModalVisibility();
 
     // Expose read-only inspection handle for verification smoke tests
     (window as unknown as Record<string, unknown>).__IRON_PULSE__ = {
       getSnapshot: () => this.combat.getSnapshot(),
       getVisionTelemetry: () => this.webcam.getTelemetry(),
       getHeartRateState: () => this.hrManager.getState(),
+      isOutfitRevealed: () => this.outfitRevealedThisMatch,
     };
 
     requestAnimationFrame((now) => this.tick(now));
@@ -197,6 +228,24 @@ class IronPulseApp {
     el<HTMLButtonElement>('btn-connect-fitbit').addEventListener('click', () => {
       void this.hrManager.connectFitbitAir();
     });
+
+    // Post-match outfit controls
+    el<HTMLButtonElement>('btn-enable-right-hand-raise-cam').addEventListener('click', () => {
+      this.sound.unlock();
+      void this.webcam.start();
+    });
+
+    el<HTMLButtonElement>('btn-reopen-outfit').addEventListener('click', () => {
+      el<HTMLButtonElement>('btn-reopen-outfit').classList.add('hidden');
+      el<HTMLElement>('shop-the-look-panel').classList.remove('hidden');
+      this.jacketShopping.open(false);
+    });
+
+    el<HTMLButtonElement>('btn-close-outfit').addEventListener('click', () => {
+      this.jacketShopping.close();
+      el<HTMLElement>('shop-the-look-panel').classList.add('hidden');
+      el<HTMLButtonElement>('btn-reopen-outfit').classList.remove('hidden');
+    });
   }
 
   private bindKeyboardControls(): void {
@@ -204,6 +253,7 @@ class IronPulseApp {
       if (ev.repeat || document.querySelector('dialog[open]')) return;
       if (ev.code === 'Space' && ev.target instanceof HTMLElement &&
           ev.target.closest('button, input, select, textarea, a')) return;
+      if (ev.target instanceof HTMLInputElement || ev.target instanceof HTMLTextAreaElement) return;
 
       const code = ev.code;
       if (code === 'Backquote' || code === 'F3') {
@@ -226,6 +276,17 @@ class IronPulseApp {
       }
 
       const snap = this.combat.getSnapshot();
+
+      if (
+        code === 'KeyG' &&
+        (snap.phase === 'VICTORY' || snap.phase === 'DEFEAT') &&
+        !this.outfitRevealedThisMatch
+      ) {
+        ev.preventDefault();
+        this.sound.unlock();
+        this.triggerShopTheLook();
+        return;
+      }
 
       if (code === 'Space') {
         ev.preventDefault();
@@ -393,6 +454,19 @@ class IronPulseApp {
         break;
     }
 
+    const sensorPill = el<HTMLElement>('right-hand-raise-sensor-pill');
+    const enableRightHandRaiseCamBtn = el<HTMLButtonElement>('btn-enable-right-hand-raise-cam');
+    if (isRunning) {
+      sensorPill.textContent =
+        state === 'starting' ? '● Starting Cam...' : '● Pose Live';
+      sensorPill.className = 'pill pill-green';
+      enableRightHandRaiseCamBtn.classList.add('hidden');
+    } else {
+      sensorPill.textContent = 'Camera Off';
+      sensorPill.className = 'pill pill-cyan';
+      enableRightHandRaiseCamBtn.classList.remove('hidden');
+    }
+
     this.syncModalVisibility();
   }
 
@@ -409,6 +483,15 @@ class IronPulseApp {
     this.keyLeanLeft = false;
     this.keyLeanRight = false;
     this.calorieEstimate = { kcal: 0, measuredMs: 0, includesDemo: false };
+    this.outfitRevealedThisMatch = false;
+    this.arena.resetPostMatchScene();
+    this.webcam.resetRightHandRaiseState();
+    this.resetOutfitDockUi();
+
+    if (this.controlMode === 'keyboard' && this.webcam.getTelemetry().state !== 'off') {
+      this.webcam.stop();
+    }
+
     for (const id of ['comic-hit', 'comic-ouch', 'comic-victory']) {
       const node = el<HTMLDivElement>(id);
       for (const animation of node.getAnimations()) animation.cancel();
@@ -504,14 +587,14 @@ class IronPulseApp {
 
   private onMatchFinished(victory: boolean): void {
     this.pendingStartAfterCalibration = false;
+    this.outfitRevealedThisMatch = false;
+    this.arena.resetPostMatchScene();
+    this.webcam.resetRightHandRaiseState();
+    this.resetOutfitDockUi();
+
     const camState = this.webcam.getTelemetry().state;
-    if (
-      camState === 'starting' ||
-      camState === 'calibrating' ||
-      camState === 'active' ||
-      camState === 'tracking_lost'
-    ) {
-      this.webcam.stop();
+    if (camState === 'off') {
+      void this.webcam.start();
     }
 
     const snap = this.combat.getSnapshot();
@@ -565,6 +648,33 @@ class IronPulseApp {
     this.syncModalVisibility();
   }
 
+  private resetOutfitDockUi(): void {
+    this.jacketShopping.close();
+    el('right-hand-raise-prompt-banner').classList.remove('hidden');
+    el('right-hand-raise-progress-fill').style.width = '0%';
+    el('right-hand-raise-progress-pct').textContent = '0%';
+    el('right-hand-raise-progress-text').textContent = 'Raise your right hand above your head…';
+    el('shop-the-look-panel').classList.add('hidden');
+    el('btn-reopen-outfit').classList.add('hidden');
+  }
+
+  private triggerShopTheLook(): void {
+    if (this.outfitRevealedThisMatch) return;
+    this.outfitRevealedThisMatch = true;
+
+    this.sound.playOutfitChime();
+    this.arena.revealOutfit();
+    this.showImpactCallout('KAI’S JACKET', '#ffbe0b');
+
+    el('right-hand-raise-prompt-banner').classList.add('hidden');
+    el('shop-the-look-panel').classList.remove('hidden');
+
+    if (this.webcam.getTelemetry().state !== 'off') {
+      this.webcam.stop();
+    }
+    this.jacketShopping.open(true);
+  }
+
   private renderHeartRateHud(state: HeartRateManagerState): void {
     const bpmEl = el<HTMLElement>('hr-bpm-value');
     const pill = el<HTMLElement>('hr-status-pill');
@@ -611,11 +721,22 @@ class IronPulseApp {
     const calibCard = el<HTMLDivElement>('screen-calibrating');
     const pausedCard = el<HTMLDivElement>('screen-paused');
     const resultCard = el<HTMLElement>('screen-result');
+    const outfitDock = el<HTMLElement>('outfit-dock');
+
+    const fitbitSlot = snap.phase === 'READY' ? 'start-fitbit-slot'
+      : snap.phase === 'VICTORY' || snap.phase === 'DEFEAT' ? 'result-fitbit-slot'
+      : snap.phase === 'PAUSED_TRACKING' ? 'paused-fitbit-slot'
+      : 'hud-top';
+    const fitbitCard = el('fitbit-card');
+    const fitbitParent = el(fitbitSlot);
+    if (fitbitCard.parentElement !== fitbitParent) fitbitParent.append(fitbitCard);
+
 
     startCard.classList.add('hidden');
     calibCard.classList.add('hidden');
     pausedCard.classList.add('hidden');
     resultCard.classList.add('hidden');
+    outfitDock.classList.add('hidden');
 
     if (
       snap.phase === 'CALIBRATING' ||
@@ -633,6 +754,7 @@ class IronPulseApp {
     } else if (snap.phase === 'VICTORY' || snap.phase === 'DEFEAT') {
       backdrop.classList.add('hidden');
       resultCard.classList.remove('hidden');
+      outfitDock.classList.remove('hidden');
     } else {
       backdrop.classList.add('hidden');
     }

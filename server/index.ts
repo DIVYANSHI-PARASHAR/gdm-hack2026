@@ -1,3 +1,4 @@
+import { registerJacketShoppingRoutes } from './jacketShoppingRoutes';
 import { matchRates, parseCounts } from '../src/shared/matchAnalytics';
 import { OBSERVER_MODEL, videoJson } from './geminiRival';
 import crypto from 'node:crypto';
@@ -100,6 +101,7 @@ export function createApiApp(port: number = 5173): express.Express {
   });
 
   app.use(express.json({ limit: '16kb' }));
+  registerJacketShoppingRoutes(app);
 
   app.post('/api/match/analysis', async (req, res) => {
     const counts = parseCounts(req.body);
@@ -284,8 +286,9 @@ async function startServer(): Promise<void> {
         isGoogleHealthConfigured()
           ? 'Configured'
           : 'Optional / unconfigured (add GOOGLE_CLIENT_ID to .env)'
-      }\n`
+      }`
     );
+    console.log('  -> Shop the Look: live Shop MCP catalog and merchant checkout');
   });
 }
 

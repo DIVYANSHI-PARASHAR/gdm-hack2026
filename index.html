@@ -44,7 +44,7 @@
           </div>
         </div>
 
-        <section class="hud-card hr-card" aria-label="Fitbit heart rate">
+        <section id="fitbit-card" class="hud-card hr-card" aria-label="Fitbit heart rate">
           <div class="hr-top-row">
             <div class="hr-bpm-block">
               <span id="hr-heart-icon" class="heart-icon" aria-hidden="true">♥</span>
@@ -127,7 +127,105 @@
         </section>
       </footer>
 
-      <!-- Non-blocking Match Result Panel (Docked Right) -->
+      <!-- Post-match outfit panel -->
+      <aside id="outfit-dock" class="outfit-dock hidden" aria-label="Kai's Outfit">
+        <!-- Right-hand raise prompt -->
+        <div id="right-hand-raise-prompt-banner" class="right-hand-raise-prompt-banner">
+          <div class="right-hand-raise-prompt-content">
+            <span class="right-hand-raise-emoji">🛍</span>
+            <div class="right-hand-raise-prompt-text">
+              <div class="right-hand-raise-title-row">
+                <strong>Raise Your Right Hand</strong>
+                <span id="right-hand-raise-sensor-pill" class="pill pill-green">● Pose Live</span>
+              </div>
+              <p id="right-hand-raise-pose-hint">
+                Hold your right hand above your head and keep your wrist in view. Press <kbd>G</kbd> to reveal Kai’s jacket without the camera.
+              </p>
+            </div>
+          </div>
+          <div id="right-hand-raise-progress-wrap" class="right-hand-raise-progress-wrap">
+            <div class="right-hand-raise-progress-label">
+              <span id="right-hand-raise-progress-text">Raise your right hand above your head…</span>
+              <span id="right-hand-raise-progress-pct">0%</span>
+            </div>
+            <div class="right-hand-raise-progress-track">
+              <div id="right-hand-raise-progress-fill" class="right-hand-raise-progress-fill"></div>
+            </div>
+          </div>
+          <button id="btn-enable-right-hand-raise-cam" type="button" class="btn btn-sm btn-outline-cyan right-hand-raise-cam-btn hidden">
+            Enable Camera
+          </button>
+        </div>
+
+        <button id="btn-reopen-outfit" type="button" class="btn btn-sm btn-outline-cyan outfit-reopen-btn hidden">
+          View Kai’s jacket
+        </button>
+
+        <section id="shop-the-look-panel" class="shop-the-look-panel hidden" aria-labelledby="outfit-title">
+          <div class="shop-header">
+            <h3 id="outfit-title" class="shop-title">Shop Kai’s look</h3>
+            <button id="btn-close-outfit" type="button" class="icon-btn" aria-label="Close outfit panel">✕</button>
+          </div>
+          <div id="jacket-shopping">
+            <div class="jacket-voice">
+              <p data-voice-status role="status">Microphone off</p>
+              <button data-voice-button type="button" class="btn btn-sm btn-outline-cyan">Start voice</button>
+            </div>
+            <div class="jacket-voice-input" data-voice-input hidden>
+              <select data-microphone aria-label="Microphone"><option value="">System default</option></select>
+              <meter data-microphone-level min="0" max="100" value="0" aria-label="Microphone input level"></meter>
+            </div>
+            <details class="jacket-tools">
+              <summary>More options</summary>
+              <a href="https://www.gucci.com/us/en/pr/men/ready-to-wear-for-men/outerwear-for-men/bombers-for-men/reversible-gg-canvas-jacket-p-722511ZALX21043" target="_blank" rel="noopener noreferrer">Gucci reference ↗</a>
+              <p data-voice-heard></p>
+              <p data-voice-caption></p>
+              <form class="jacket-search" data-voice-text hidden>
+                <input maxlength="240" aria-label="Type a reply to Gemini" placeholder="Or type your reply">
+                <button type="submit" class="btn btn-sm btn-outline-cyan">Send</button>
+              </form>
+              <form class="jacket-search" data-jacket-search>
+                <input type="search" maxlength="240" aria-label="Search live Shop jackets" placeholder="Search jackets on Shop">
+                <button type="submit" class="btn btn-sm btn-outline-cyan">Search</button>
+              </form>
+            </details>
+            <div data-jacket-selection></div>
+            <div data-jacket-results aria-live="polite"></div>
+          </div>
+        </section>
+      </aside>
+
+      <dialog id="merchant-checkout" class="merchant-checkout" aria-labelledby="merchant-checkout-title">
+        <header>
+          <h2 id="merchant-checkout-title">Checkout</h2>
+          <button data-checkout-close class="icon-btn" type="button" aria-label="Close checkout">✕</button>
+        </header>
+        <p data-checkout-item></p>
+        <form data-delivery-form autocomplete="on" hidden>
+          <h3>Delivery</h3>
+          <p class="wide delivery-default">The Malin Chelsea · Edit if needed</p>
+          <label class="wide">Email<input type="email" name="email" autocomplete="email" required></label>
+          <label>First name<input name="first_name" autocomplete="shipping given-name" required></label>
+          <label>Last name<input name="last_name" autocomplete="shipping family-name" required></label>
+          <label class="wide">Address<input name="street_address" autocomplete="shipping street-address" required></label>
+          <label>City<input name="address_locality" autocomplete="shipping address-level2" required></label>
+          <label>State / region<input name="address_region" autocomplete="shipping address-level1" required></label>
+          <label>Postal code<input name="postal_code" autocomplete="shipping postal-code" required></label>
+          <label>Country code<input name="address_country" autocomplete="shipping country" placeholder="US" maxlength="2" required></label>
+          <p class="wide" data-delivery-error role="status"></p>
+          <button class="wide" type="submit">Open merchant checkout</button>
+        </form>
+        <section data-checkout-summary hidden>
+          <p data-checkout-status role="status"></p>
+          <details>
+            <summary>Order details &amp; policies</summary>
+            <div data-checkout-details></div>
+          </details>
+          <a data-checkout-link target="_blank" rel="noopener noreferrer" hidden>Open merchant checkout ↗</a>
+        </section>
+      </dialog>
+
+      <!-- Non-blocking Match Result Panel (Docked Right — Pure Game State) -->
       <aside id="screen-result" class="result-panel hidden" aria-label="Match Results">
         <h2 id="result-title" class="result-heading">Victory</h2>
 
@@ -180,6 +278,7 @@
         </div>
         <p id="res-calories-note" class="fitness-note"></p>
 
+        <div id="result-fitbit-slot"></div>
         <div class="result-actions">
           <button id="btn-match-recap" class="btn btn-lg btn-outline-cyan" aria-haspopup="dialog">
             Match Recap
@@ -214,6 +313,7 @@
             Step into the ring against <strong>KAI THE BRAWLER</strong> — an adaptive opponent who reads your movements and counters your attacks.
           </p>
 
+          <div id="start-fitbit-slot"></div>
           <div class="start-actions">
             <button id="btn-start-webcam" class="btn btn-lg btn-primary">
               Fight with Webcam Motion
@@ -255,6 +355,7 @@
 
         <!-- 3. Tracking Lost Pause Screen -->
         <div id="screen-paused" class="modal-card hidden">
+          <div id="paused-fitbit-slot"></div>
           <div class="eyebrow warning-text">COMBAT PAUSED</div>
           <h2 id="pause-heading">Pose Tracking Lost</h2>
           <p id="pause-message" class="subtitle">
