@@ -1,3 +1,4 @@
+import { JacketShopping } from './commerce/jacketShopping';
 import './style.css';
 import { estimateCalories } from './ble/calorieEstimate';
 import { matchHeartRatePlot } from './ble/matchHeartRatePlot';
@@ -56,6 +57,7 @@ class IronPulseApp {
   private lastStrategyLatencyMs: number | null = null;
 
   private outfitRevealedThisMatch = false;
+  private jacketShopping = new JacketShopping(el('jacket-shopping'));
 
   private lastFramePerfMs = performance.now();
 
@@ -235,9 +237,11 @@ class IronPulseApp {
     el<HTMLButtonElement>('btn-reopen-outfit').addEventListener('click', () => {
       el<HTMLButtonElement>('btn-reopen-outfit').classList.add('hidden');
       el<HTMLElement>('shop-the-look-panel').classList.remove('hidden');
+      this.jacketShopping.open(false);
     });
 
     el<HTMLButtonElement>('btn-close-outfit').addEventListener('click', () => {
+      this.jacketShopping.close();
       el<HTMLElement>('shop-the-look-panel').classList.add('hidden');
       el<HTMLButtonElement>('btn-reopen-outfit').classList.remove('hidden');
     });
@@ -644,6 +648,7 @@ class IronPulseApp {
   }
 
   private resetOutfitDockUi(): void {
+    this.jacketShopping.close();
     el('right-hand-raise-prompt-banner').classList.remove('hidden');
     el('right-hand-raise-progress-fill').style.width = '0%';
     el('right-hand-raise-progress-pct').textContent = '0%';
@@ -666,6 +671,7 @@ class IronPulseApp {
     if (this.webcam.getTelemetry().state !== 'off') {
       this.webcam.stop();
     }
+    this.jacketShopping.open(true);
   }
 
   private renderHeartRateHud(state: HeartRateManagerState): void {

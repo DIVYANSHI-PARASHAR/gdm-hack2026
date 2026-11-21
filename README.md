@@ -117,8 +117,12 @@ cp .env.example .env
 
 After a fight, open **Match Recap** for observed punch accuracy by hand, lean direction, and hits taken per resolved attack from each direction. Opening the recap sends aggregate counts to Gemini 4 Hydrogen for a short interpretation. Exact counts and percentages remain available offline.
 
-## Post-match jacket reveal
+## Post-match voice shopping
 
-On the result screen, hold your right arm straight overhead for about **340 ms** with your face and right wrist visible to the camera. You can also press **G**. The camera moves in to show Kai’s Gucci Reversible GG Canvas Jacket (style **722511 ZALX2 1043**). Select **View on Gucci.com** to open the jacket in a new tab.
+1. Finish a match and raise your right hand overhead with your face and wrist visible, or press **G**. The game reveals Kai’s jacket, checks live Shop MCP listings, and asks for microphone access to start Gemini voice.
+2. Ask for a jacket or a size. When the exact Gucci style isn’t available on Shop, the panel and Gemini identify the results as alternatives. You can also search and select options without a microphone.
+3. Ask Gemini to check out or select **Prepare merchant checkout**, then **Review and pay on merchant site**. The merchant handles payment and places the real order.
 
-Run `npm test` to verify gesture timing, right-arm tracking, and match resets.
+Set `GEMINI_API_KEY` in `.env` with access to Gemini Live, served on localhost or HTTPS for microphone permission. Set `GEMINI_LIVE_MODEL` only if your key requires a different Live model. Shop MCP needs no Shopify account or API key. Catalog search and checkout are configured for US delivery and USD.
+
+Run `npm test` for gesture, catalog matching, variant validation, and checkout URL preservation.
