@@ -16,5 +16,5 @@
     "noFallthroughCasesInSwitch": true,
     "resolveJsonModule": true
   },
-  "include": ["src", "server", "tests"]
+  "include": ["src", "server", "tests", "scripts"]
 }

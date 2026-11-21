@@ -256,6 +256,7 @@ export class CombatEngine {
       this.earlyDodgeCount += 1;
     }
 
+    if (direction !== 'NONE') this.emit({ type: 'PLAYER_LEAN', timestampMs: this.nowMs, side: direction });
     this.heldLean = direction;
     if (direction === 'LEFT') {
       this.recentLeanLeftCount += 1;
@@ -557,6 +558,7 @@ export class CombatEngine {
         this.recentPlayerDodged += 1;
         this.emit({
           type: 'PLAYER_DODGE_SUCCESS',
+          attackSide: this.bossAttackSide,
           timestampMs: this.nowMs,
           side:
             this.heldLean !== 'NONE'
@@ -785,6 +787,7 @@ export class CombatEngine {
         timestampMs: this.nowMs,
         strategy: this.activeStrategy,
         strategySource: this.activeStrategySource,
+        videoEvidenceUsed: d.source === 'gemini' && d.videoEvidenceUsed === true,
       });
       return;
     }

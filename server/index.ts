@@ -1,8 +1,12 @@
+import { matchRates, parseCounts } from '../src/shared/matchAnalytics';
+import { OBSERVER_MODEL, videoJson } from './geminiRival';
 import crypto from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import express, { Request, Response } from 'express';
+import { analyzeRivalVideo, parseRivalRequest } from './geminiRival';
+import { parseRivalContext } from '../src/shared/rival';
 import { isConfiguredSecret, loadDotEnv } from './env';
 import {
   decideNextBossStrategy,
@@ -73,7 +77,48 @@ function getOrSetSessionCookie(req: Request, res: Response): string {
 export function createApiApp(port: number = 5173): express.Express {
   const app = express();
   app.disable('x-powered-by');
+  app.post('/api/boss/video', express.json({ limit: '810kb' }), async (req, res) => {
+    const request = req.body?.consent === true ? parseRivalRequest(req.body) : null;
+    if (!request) {
+      res.status(400).json({ error: 'Invalid or unconsented rival video request.' });
+      return;
+    }
+    const apiKey = process.env.GEMINI_API_KEY;
+    if (!apiKey || !isConfiguredSecret(apiKey)) {
+      res.status(503).json({ error: 'Gemini video is unavailable.' });
+      return;
+    }
+    const disconnect = new AbortController();
+    res.once('close', () => disconnect.abort());
+    try {
+      const result = await analyzeRivalVideo(request, apiKey,
+        AbortSignal.any([disconnect.signal, AbortSignal.timeout(8000)]));
+      if (!disconnect.signal.aborted) res.json({ result });
+    } catch {
+      if (!disconnect.signal.aborted) res.status(502).json({ error: 'Gemini video analysis failed.' });
+    }
+  });
+
   app.use(express.json({ limit: '16kb' }));
+
+  app.post('/api/match/analysis', async (req, res) => {
+    const counts = parseCounts(req.body);
+    if (!counts) { res.status(400).json({ error: 'Invalid match counts.' }); return; }
+    const key = process.env.GEMINI_API_KEY;
+    if (!key || !isConfiguredSecret(key)) { res.status(503).json({ error: 'Gemini key unavailable.' }); return; }
+    const stop = new AbortController();
+    res.once('close', () => stop.abort());
+    try {
+      const input = 'Interpret these observed rates for one video game match. In two short sentences, identify the most informative contrast or tendency, using its exact counts. Call out small samples when appropriate. Skip rows with zero opportunities. Avoid predictions, coaching, causes, or claims about physical injury. Attack side is the incoming game attack direction. ' + JSON.stringify(matchRates(counts));
+      const result = await videoJson(OBSERVER_MODEL, input, [], {
+        type: 'object', properties: { summary: { type: 'string' } }, required: ['summary'],
+      }, key, AbortSignal.any([stop.signal, AbortSignal.timeout(20000)])) as { summary?: unknown } | null;
+      if (typeof result?.summary !== 'string' || !result.summary.trim()) throw new Error();
+      res.json({ summary: result.summary.trim().slice(0, 800) });
+    } catch {
+      if (!stop.signal.aborted) res.status(502).json({ error: 'Model analysis unavailable.' });
+    }
+  });
 
   app.get('/api/config', (req, res) => {
     const cookies = parseCookies(req.headers.cookie);
@@ -94,7 +139,7 @@ export function createApiApp(port: number = 5173): express.Express {
       return;
     }
 
-    const decision = await decideNextBossStrategy(summary);
+    const decision = await decideNextBossStrategy(summary, { rival: parseRivalContext(req.body?.rival) });
     res.json(decision);
   });
 

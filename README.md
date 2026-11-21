@@ -63,7 +63,7 @@ npm test        # Vitest suite: combat state machine, gesture transitions, BLE p
 4. **Performance & Privacy:**
    - Pose inference runs inside a dedicated **Web Worker** (`src/vision/pose.worker.ts`) using transferable `ImageBitmap` frames with a strict single-frame in-flight gate (zero stale frame backlog) so 3D rendering stays decoupled from pose inference.
    - Combat pauses automatically if pose tracking is lost and lets you resume once your shoulders are reacquired (or switch to keyboard anytime).
-   - **All video frames and landmarks remain strictly on-device** and are stopped immediately when disabling the camera or closing the tab.
+   - Pose detection stays on-device. Disabling the camera or closing the tab stops capture.
 
 ### How to Measure Real Motion-to-Screen Latency (< 100 ms Target)
 The Debug Panel (`` ` ``) shows software **Detect -> Render** timing (`capturePerfMs` to completed `requestAnimationFrame` WebGL draw). To measure true physical **motion-to-photon** latency:
@@ -104,7 +104,7 @@ cp .env.example .env
 
 ### 1. Gemini Decisions API (`GEMINI_API_KEY`)
 - Set `GEMINI_API_KEY` in `.env` from Google AI Studio.
-- Between exchanges, the server sends compact gameplay-only summaries (recent left/right punch counts, lean counts, hit/dodge counts, round, health percentages—**never** webcam or health data) to `POST https://generativelanguage.googleapis.com/v1beta/decisions` with model **`gemini-decision-1`**, selecting among `pressure`, `delayed_strike`, `bait_and_counter`, and `defensive_reset`.
+- Between exchanges, the server sends compact gameplay summaries (punches, leans, hits, dodges, round, and in-game HP) to `POST https://generativelanguage.googleapis.com/v1beta/decisions` with model **`gemini-decision-1`**, selecting among `pressure`, `delayed_strike`, `bait_and_counter`, and `defensive_reset`.
 - Decisions are validated and queued asynchronously to take effect at the next valid boss state transition; stale or failed requests fall back deterministically to the local AI. Check **AI Source** in the Debug Panel (`` ` ``) to verify `Gemini (gemini-decision-1)` vs `Local Deterministic AI`.
 
 ### 2. Google Health API Post-Match Synced Calories (`GOOGLE_CLIENT_ID` / `GOOGLE_CLIENT_SECRET`)
@@ -114,3 +114,5 @@ cp .env.example .env
 - Uses the minimum read-only scope: `https://www.googleapis.com/auth/googlehealth.activity_and_fitness.readonly`.
 - The server retains OAuth and total-calories endpoints for API clients. The game’s match report uses Fitbit heart rate.
 - OAuth tokens stay strictly server-side (`HttpOnly` session) and health data is never logged or sent to Gemini.
+
+After a fight, open **Match Recap** for observed punch accuracy by hand, lean direction, and hits taken per resolved attack from each direction. Opening the recap sends aggregate counts to Gemini 4 Hydrogen for a short interpretation. Exact counts and percentages remain available offline.

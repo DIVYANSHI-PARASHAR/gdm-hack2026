@@ -18,6 +18,8 @@ import {
   ExchangeSummaryPayload,
   StrategyDecisionResponse,
 } from './shared/types';
+import { emptyCounts, recordAction } from './shared/matchAnalytics';
+import { MatchRecap } from './ui/matchRecap';
 import { WebcamController, WebcamState } from './vision/webcamController';
 
 function el<T extends HTMLElement>(id: string): T {
@@ -31,6 +33,13 @@ class IronPulseApp {
   private arena: ArenaScene;
   private combat: CombatEngine;
   private webcam: WebcamController;
+  private matchCounts = emptyCounts();
+  private recap = new MatchRecap(
+    el<HTMLDialogElement>('match-recap'),
+    el<HTMLOListElement>('recap-timeline'),
+    el('recap-analysis'),
+    el('recap-outcome'),
+  );
   private hrManager: FitbitHeartRateManager;
 
   private controlMode: 'keyboard' | 'webcam' = 'keyboard';
@@ -162,6 +171,10 @@ class IronPulseApp {
       this.syncModalVisibility();
     });
 
+    el<HTMLButtonElement>('btn-match-recap').addEventListener('click', () => {
+      this.recap.open(el('result-title').textContent ?? '', this.matchCounts);
+    });
+
     el<HTMLButtonElement>('btn-rematch').addEventListener('click', () => {
       this.triggerRematch();
     });
@@ -188,7 +201,9 @@ class IronPulseApp {
 
   private bindKeyboardControls(): void {
     window.addEventListener('keydown', (ev) => {
-      if (ev.repeat) return;
+      if (ev.repeat || document.querySelector('dialog[open]')) return;
+      if (ev.code === 'Space' && ev.target instanceof HTMLElement &&
+          ev.target.closest('button, input, select, textarea, a')) return;
 
       const code = ev.code;
       if (code === 'Backquote' || code === 'F3') {
@@ -389,6 +404,8 @@ class IronPulseApp {
   }
 
   private beginFight(): void {
+    this.matchCounts = emptyCounts();
+    this.recap.reset();
     this.keyLeanLeft = false;
     this.keyLeanRight = false;
     this.calorieEstimate = { kcal: 0, measuredMs: 0, includesDemo: false };
@@ -403,6 +420,7 @@ class IronPulseApp {
   }
 
   private handleCombatEvent(event: CombatEvent): void {
+    recordAction(this.matchCounts, event);
     this.sound.handleCombatEvent(event);
     this.arena.handleCombatEvent(event);
 

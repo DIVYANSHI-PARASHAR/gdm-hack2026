@@ -105,6 +105,10 @@ export class WebcamController {
     }
   }
 
+  getCameraStream(): MediaStream | null {
+    return this.stream;
+  }
+
   private async startInternal(session: number): Promise<boolean> {
     if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
       this.setState(

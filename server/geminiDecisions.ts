@@ -7,6 +7,7 @@ import {
   ExchangeSummaryPayload,
   StrategyDecisionResponse,
 } from '../src/shared/types';
+import { parseRivalContext } from '../src/shared/rival';
 import { isConfiguredSecret } from './env';
 
 export const GEMINI_DECISIONS_ENDPOINT =
@@ -91,6 +92,7 @@ export async function decideNextBossStrategy(
     apiKey?: string;
     fetchImpl?: typeof fetch;
     timeoutMs?: number;
+    rival?: ReturnType<typeof parseRivalContext>;
   } = {}
 ): Promise<StrategyDecisionResponse> {
   const startMs = Date.now();
@@ -114,14 +116,21 @@ export async function decideNextBossStrategy(
   const timer = setTimeout(() => controller.abort(), timeoutMs);
 
   try {
+    const observation = options.rival?.observation;
+    const plan = options.rival?.plan;
+    const videoEvidence = [
+      observation && observation.cue !== 'unclear' ? `Recent video cue: ${observation.cue}.` : '',
+      plan ? `Recurring video pattern: ${plan.pattern}. Round preference: ${plan.preferredStrategy}.` : '',
+    ].filter(Boolean).join(' ');
     const requestBody = {
       model: GEMINI_DECISION_MODEL,
-      input: buildCompactDecisionInput(summary),
+      input: [{ type: 'text', text: [buildCompactDecisionInput(summary), videoEvidence].filter(Boolean).join(' ') }],
       questions: {
         next_strategy: {
           type: 'choice',
-          instructions:
-            'Choose the single most effective next combat strategy for the robot boxing boss to adapt against the player habits shown in the exchange summary.',
+          instructions: videoEvidence
+            ? 'Choose the best tactic for the fictional robot boss. Weigh the video evidence and round preference against current game state.'
+            : 'Choose the single most effective next combat strategy for the robot boxing boss to adapt against the player habits shown in the exchange summary.',
           criteria: STRATEGY_CRITERIA,
         },
       },
@@ -159,9 +168,10 @@ export async function decideNextBossStrategy(
       exchangeIndex: summary.exchangeIndex,
       strategy: choice,
       source: 'gemini',
+      videoEvidenceUsed: Boolean(videoEvidence),
       confidence,
       latencyMs: Date.now() - startMs,
-      reason: `Gemini (${GEMINI_DECISION_MODEL}) routed to ${choice}${
+      reason: `Gemini (${GEMINI_DECISION_MODEL}) routed to ${choice}${videoEvidence ? ' using video evidence' : ''}${
         confidence !== undefined ? ` (${Math.round(confidence * 100)}% conf)` : ''
       }.`,
     };

@@ -38,6 +38,7 @@ export interface StrategyDecisionResponse {
   source: StrategySource;
   confidence?: number;
   latencyMs?: number;
+  videoEvidenceUsed?: boolean;
   reason?: string;
 }
 
@@ -71,6 +72,7 @@ export type BossState =
   | 'VICTORY_POSE';
 
 export type CombatEventType =
+  | 'PLAYER_LEAN'
   | 'PLAYER_PUNCH_THROW'
   | 'PLAYER_PUNCH_HIT'
   | 'PLAYER_PUNCH_COUNTER_HIT'
@@ -91,7 +93,9 @@ export interface CombatEvent {
   side?: 'LEFT' | 'RIGHT' | 'CENTER';
   damage?: number;
   strategy?: BossStrategyId;
+  attackSide?: BossAttackSide;
   strategySource?: StrategySource;
+  videoEvidenceUsed?: boolean;
   label?: string;
 }
 

@@ -109,8 +109,10 @@ describe('CombatEngine state machine', () => {
 
   it('applies valid async Gemini strategy and discards stale or mismatched decisions', () => {
     let emittedSummary: ExchangeSummaryPayload | null = null;
+    const events: CombatEvent[] = [];
     const engine = new CombatEngine({
       rng: () => 0.2,
+      onEvent: (event) => events.push(event),
       onExchangeSummary: (s) => {
         emittedSummary = s;
       },
@@ -131,6 +133,7 @@ describe('CombatEngine state machine', () => {
       strategy: 'bait_and_counter',
       source: 'gemini',
       confidence: 0.91,
+      videoEvidenceUsed: true,
     });
     expect(accepted).toBe(true);
 
@@ -141,6 +144,10 @@ describe('CombatEngine state machine', () => {
     }
     expect(engine.getSnapshot().activeStrategy).toBe('bait_and_counter');
     expect(engine.getSnapshot().activeStrategySource).toBe('gemini');
+
+    expect(events.filter((event) => event.type === 'STRATEGY_APPLIED')).toEqual([
+      expect.objectContaining({ strategy: 'bait_and_counter', strategySource: 'gemini', videoEvidenceUsed: true }),
+    ]);
 
     // Stale duplicate/older exchange response must be discarded
     const staleAccepted = engine.queueStrategyDecision({

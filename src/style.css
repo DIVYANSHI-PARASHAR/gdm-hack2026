@@ -890,3 +890,107 @@ kbd {
     radial-gradient(circle, #ff9c39 18%, transparent 22%) center / 7px 7px,
     radial-gradient(ellipse, #fff797 22%, #ffd32f 60%, #ef4425 87%);
 }
+
+.rival-opt-in {
+  display: flex;
+  align-items: flex-start;
+  gap: 6px;
+  white-space: normal;
+  cursor: pointer;
+}
+
+.cam-card .rival-opt-in,
+#rival-status {
+  max-width: 224px;
+  white-space: normal;
+}
+
+#rival-status:empty {
+  display: none;
+}
+
+.result-actions:has(#btn-match-recap) {
+  gap: 8px;
+}
+
+#btn-match-recap {
+  flex: 1;
+  font-size: 0.9rem;
+  white-space: nowrap;
+}
+
+.result-actions:has(#btn-match-recap) .btn-rematch-full {
+  flex: 1;
+  width: auto;
+}
+
+.recap-dialog {
+  width: min(560px, calc(100% - 32px));
+  max-height: min(680px, calc(100dvh - 32px));
+  padding: 0;
+  color: var(--text-main);
+  background: #0a0f1d;
+  border: 1px solid var(--panel-border);
+  border-radius: 14px;
+  box-shadow: 0 18px 48px rgba(0, 0, 0, 0.65);
+}
+
+.recap-dialog::backdrop {
+  background: rgba(3, 6, 13, 0.72);
+}
+
+.recap-header {
+  position: sticky;
+  top: 0;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 16px;
+  padding: 18px 20px;
+  background: #0a0f1d;
+  border-bottom: 1px solid var(--panel-border);
+}
+
+.recap-header h2,
+.recap-header p {
+  margin: 0;
+}
+
+.recap-header p {
+  color: var(--cyan);
+  font-size: 0.8rem;
+}
+
+.recap-timeline {
+  margin: 0;
+  padding: 0 20px;
+  list-style: none;
+}
+
+.recap-timeline li {
+  padding: 14px 0;
+}
+
+.recap-timeline li + li {
+  border-top: 1px solid var(--panel-border);
+}
+
+.recap-timeline li div {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  gap: 4px 12px;
+}
+
+.recap-timeline li span {
+  color: var(--text-muted);
+  font-size: 0.8rem;
+}
+
+.recap-timeline li p {
+  margin: 6px 0 0;
+}
+
+#recap-analysis {
+  padding: 0 20px;
+}

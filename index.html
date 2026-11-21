@@ -181,11 +181,28 @@
         <p id="res-calories-note" class="fitness-note"></p>
 
         <div class="result-actions">
+          <button id="btn-match-recap" class="btn btn-lg btn-outline-cyan" aria-haspopup="dialog">
+            Match Recap
+          </button>
           <button id="btn-rematch" class="btn btn-lg btn-primary btn-rematch-full">
             Rematch
           </button>
         </div>
       </aside>
+
+      <dialog id="match-recap" class="recap-dialog" aria-labelledby="recap-title">
+        <header class="recap-header">
+          <div>
+            <p id="recap-outcome"></p>
+            <h2 id="recap-title">Match Recap</h2>
+          </div>
+          <form method="dialog">
+            <button class="btn btn-sm btn-ghost" autofocus>Close</button>
+          </form>
+        </header>
+        <p id="recap-analysis" aria-live="polite"></p>
+        <ol id="recap-timeline" class="recap-timeline" aria-label="Observed match rates"></ol>
+      </dialog>
 
       <!-- Modal Overlay: Start / Calibration / Tracking Lost -->
       <div id="modal-backdrop" class="modal-backdrop">
@@ -206,10 +223,11 @@
             </button>
           </div>
 
+
           <div class="how-to-grid">
             <div class="info-box">
               <h3>Webcam Gestures</h3>
-              <p>Calibrate neutral guard, throw straight punches or hooks, and lean your upper body left/right to slip strikes. Video stays 100% on-device.</p>
+              <p>Calibrate neutral guard, throw straight punches or hooks, and lean your upper body left/right to slip strikes. Motion controls process video on-device.</p>
             </div>
             <div class="info-box">
               <h3>Keyboard Fallback</h3>
