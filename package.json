@@ -1,0 +1,28 @@
+{
+  "name": "iron-pulse-boxing",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "First-person webcam motion-controlled 3D robot boxing game with Gemini Decisions API, Fitbit Air BLE live BPM, and Google Health synced calories.",
+  "scripts": {
+    "start": "tsx server/index.ts",
+    "dev": "tsx server/index.ts",
+    "build": "tsc --noEmit && vite build",
+    "preview": "NODE_ENV=production tsx server/index.ts",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@mediapipe/tasks-vision": "^0.10.18",
+    "express": "^4.21.2",
+    "three": "^0.170.0"
+  },
+  "devDependencies": {
+    "@types/express": "^5.0.0",
+    "@types/node": "^22.10.2",
+    "@types/three": "^0.170.0",
+    "tsx": "^4.19.2",
+    "typescript": "^5.7.2",
+    "vite": "^6.0.5",
+    "vitest": "^2.1.8"
+  }
+}

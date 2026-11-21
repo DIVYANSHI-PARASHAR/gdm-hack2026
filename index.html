@@ -1,0 +1,304 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>IRON PULSE // First-Person Motion Boxing</title>
+  </head>
+  <body>
+    <div id="app">
+      <div id="arena-container" aria-label="3D Boxing Arena"></div>
+      <div id="screen-vignette"></div>
+
+      <!-- Top HUD: Player & Boss Health Bars + Round Info -->
+      <header id="hud-top">
+        <div class="fighter-panel player-panel">
+          <div class="fighter-header">
+            <span class="fighter-name">CHALLENGER</span>
+            <span id="input-mode-badge" class="pill pill-cyan">KEYBOARD</span>
+            <span id="player-hp-text" class="hp-num">100 / 100</span>
+          </div>
+          <div class="hp-track">
+            <div id="player-hp-fill" class="hp-fill player-fill"></div>
+          </div>
+        </div>
+
+        <div class="match-center-badge">
+          <div id="round-badge" class="round-label">ROUND 1</div>
+          <div id="match-timer" class="timer-label">00:00</div>
+          <div id="exchange-badge" class="exchange-label">EXCHANGE 1</div>
+        </div>
+
+        <div class="fighter-panel boss-panel">
+          <div class="fighter-header boss-header">
+            <span id="boss-hp-text" class="hp-num">100 / 100</span>
+            <span id="boss-strategy-badge" class="pill pill-magenta">PRESSURE OVERDRIVE</span>
+            <span class="fighter-name">KRONOS-V</span>
+          </div>
+          <div class="hp-track boss-track">
+            <div id="boss-hp-fill" class="hp-fill boss-fill"></div>
+          </div>
+        </div>
+      </header>
+
+      <!-- Mid-screen Telegraph & Hit Callout -->
+      <div id="combat-alerts">
+        <div id="telegraph-banner" class="telegraph-banner hidden"></div>
+        <div id="impact-callout" class="impact-callout hidden"></div>
+      </div>
+
+      <!-- Toggleable Debug Telemetry Panel -->
+      <aside id="debug-panel" class="debug-panel hidden" aria-label="Debug Telemetry">
+        <div class="debug-title">
+          <span>TELEMETRY // DEBUG</span>
+          <button id="btn-close-debug" class="icon-btn" title="Close Debug (`)">✕</button>
+        </div>
+        <div class="debug-grid">
+          <span>Webcam State:</span><strong id="dbg-cam-state">off</strong>
+          <span>Pose Runtime:</span><strong id="dbg-pose-mode">none</strong>
+          <span>Camera FPS:</span><strong id="dbg-cam-fps">0 fps</strong>
+          <span>Pose Inference:</span><strong id="dbg-infer-ms">0.0 ms</strong>
+          <span>Landmark Conf:</span><strong id="dbg-conf">0%</strong>
+          <span>Recognized Gesture:</span><strong id="dbg-gesture">NONE</strong>
+          <span>Detect → Render:</span><strong id="dbg-latency">0.0 ms</strong>
+          <hr class="debug-sep" />
+          <span>Boss State:</span><strong id="dbg-boss-state">IDLE</strong>
+          <span>Active Strategy:</span><strong id="dbg-strategy">pressure</strong>
+          <span>AI Source:</span><strong id="dbg-ai-source">Local AI</strong>
+          <span>AI Detail:</span><strong id="dbg-ai-detail">Opening preset</strong>
+          <span>Stale Discarded:</span><strong id="dbg-stale-count">0</strong>
+        </div>
+      </aside>
+
+      <!-- Bottom HUD: Fitbit Air Live BPM (Left), Controls Legend (Center), Webcam Preview (Right) -->
+      <footer id="hud-bottom">
+        <!-- Fitbit Air BLE + Demo HR Widget -->
+        <section class="hud-card hr-card" aria-label="Heart Rate Monitor">
+          <div class="hr-top-row">
+            <div class="hr-bpm-block">
+              <span id="hr-heart-icon" class="heart-icon">♥</span>
+              <span id="hr-bpm-value" class="hr-bpm-num">--</span>
+              <span class="hr-unit">BPM</span>
+              <span id="hr-demo-badge" class="demo-tag hidden">Demo data</span>
+            </div>
+            <span id="hr-status-pill" class="status-dot-pill">Idle</span>
+          </div>
+          <div id="hr-status-detail" class="hr-detail">
+            Optional Fitbit Air live BLE heart rate
+          </div>
+          <div class="hr-actions">
+            <button id="btn-connect-fitbit" class="btn btn-sm btn-outline-cyan">
+              Connect Fitbit Air
+            </button>
+            <button id="btn-demo-hr" class="btn btn-sm btn-ghost">
+              Simulate HR (Demo data)
+            </button>
+            <button id="btn-hr-guide" class="btn btn-sm btn-ghost" title="Phone pairing instructions">
+              ? Setup
+            </button>
+            <button id="btn-disconnect-hr" class="btn btn-sm btn-ghost hidden">
+              Disconnect
+            </button>
+          </div>
+          <div id="hr-guide-popover" class="hr-guide hidden">
+            <strong>Broadcast Fitbit Air Heart Rate:</strong>
+            <ol>
+              <li>Open <strong>Google Health</strong> on your phone.</li>
+              <li>Go to <strong>Connections</strong> and select your <strong>Fitbit Air</strong>.</li>
+              <li>Choose <strong>Share heart rate</strong> and tap <strong>Get started</strong>.</li>
+              <li>Click <strong>Connect Fitbit Air</strong> here on your laptop (Chrome/Edge on localhost).</li>
+            </ol>
+            <small>Your phone enables broadcast; your laptop runs the game directly via BLE (0x180D / 0x2A37).</small>
+          </div>
+        </section>
+
+        <!-- Center Keyboard & Action Strip -->
+        <section class="controls-strip">
+          <div class="key-hints">
+            <span><kbd>A</kbd>/<kbd>←</kbd> Lean Left</span>
+            <span><kbd>D</kbd>/<kbd>→</kbd> Lean Right</span>
+            <span><kbd>J</kbd>/<kbd>Z</kbd> Left Punch</span>
+            <span><kbd>K</kbd>/<kbd>X</kbd> Right Punch</span>
+          </div>
+          <div class="utility-btns">
+            <button id="btn-toggle-debug" class="btn btn-sm btn-ghost">
+              Debug (<kbd>`</kbd>)
+            </button>
+            <button id="btn-toggle-mute" class="btn btn-sm btn-ghost">
+              Sound: ON
+            </button>
+          </div>
+        </section>
+
+        <!-- Mirrored Webcam Preview Card -->
+        <section class="hud-card cam-card" aria-label="Webcam Motion Controls">
+          <div class="cam-preview-wrap">
+            <canvas id="webcam-preview" width="224" height="168"></canvas>
+            <div id="cam-placeholder" class="cam-placeholder">
+              <span>WEBCAM OFF</span>
+              <small>On-device pose only</small>
+            </div>
+            <div id="cam-gesture-tag" class="cam-gesture-tag hidden">NEUTRAL</div>
+          </div>
+          <div class="cam-controls">
+            <div id="cam-status-text" class="cam-status">Keyboard mode active</div>
+            <div class="cam-btn-row">
+              <button id="btn-toggle-cam" class="btn btn-sm btn-outline-cyan">
+                Enable Webcam
+              </button>
+              <button id="btn-recalibrate" class="btn btn-sm btn-ghost" disabled>
+                Calibrate (C)
+              </button>
+            </div>
+          </div>
+        </section>
+      </footer>
+
+      <!-- Modal Overlay: Start / Calibration / Tracking Lost / Match Results -->
+      <div id="modal-backdrop" class="modal-backdrop">
+        <!-- 1. Title / Start Screen -->
+        <div id="screen-start" class="modal-card">
+          <div class="eyebrow">NEON INDUSTRIAL MOTION BOXING</div>
+          <h1 class="game-title">IRON PULSE</h1>
+          <p class="subtitle">
+            Step into the ring against <strong>KRONOS-V</strong> — an adaptive floating combat mech with hydraulic gauntlets and a reactive plasma core.
+          </p>
+
+          <div class="start-actions">
+            <button id="btn-start-webcam" class="btn btn-lg btn-primary">
+              Fight with Webcam Motion
+            </button>
+            <button id="btn-start-keyboard" class="btn btn-lg btn-secondary">
+              Fight with Keyboard (Zero Setup)
+            </button>
+          </div>
+
+          <div class="how-to-grid">
+            <div class="info-box">
+              <h3>Webcam Gestures</h3>
+              <p>Calibrate neutral guard, punch left/right toward camera, and lean your upper body left/right to slip strikes. Video stays 100% on-device.</p>
+            </div>
+            <div class="info-box">
+              <h3>Keyboard Fallback</h3>
+              <p>Hold <kbd>A</kbd>/<kbd>D</kbd> (or <kbd>←</kbd>/<kbd>→</kbd>) to lean &amp; dodge windups. Press <kbd>J</kbd> / <kbd>K</kbd> to throw Left / Right punches during openings.</p>
+            </div>
+          </div>
+        </div>
+
+        <!-- 2. Neutral Pose Calibration Screen -->
+        <div id="screen-calibrating" class="modal-card hidden">
+          <div class="eyebrow">ON-DEVICE POSE CALIBRATION</div>
+          <h2>Hold Neutral Boxing Guard</h2>
+          <p class="subtitle">
+            Center your head and shoulders in view with hands comfortably raised. Stay steady for a moment...
+          </p>
+          <div class="calib-bar-track">
+            <div id="calib-bar-fill" class="calib-bar-fill"></div>
+          </div>
+          <div class="modal-row-btns">
+            <button id="btn-skip-to-keyboard" class="btn btn-secondary">
+              Switch to Keyboard Mode
+            </button>
+          </div>
+        </div>
+
+        <!-- 3. Tracking Lost Pause Screen -->
+        <div id="screen-paused" class="modal-card hidden">
+          <div class="eyebrow warning-text">COMBAT PAUSED</div>
+          <h2 id="pause-heading">Pose Tracking Lost</h2>
+          <p id="pause-message" class="subtitle">
+            Step back into the webcam frame with both shoulders visible to reacquire tracking.
+          </p>
+          <div class="modal-row-btns">
+            <button id="btn-resume-fight" class="btn btn-primary" disabled>
+              Waiting for Pose...
+            </button>
+            <button id="btn-pause-use-keyboard" class="btn btn-secondary">
+              Continue with Keyboard
+            </button>
+          </div>
+        </div>
+
+        <!-- 4. Match Result Screen (Win / Loss + Live BPM Stats + Synced Total Calories + Replay) -->
+        <div id="screen-result" class="modal-card result-card hidden">
+          <div id="result-eyebrow" class="eyebrow">MATCH COMPLETE</div>
+          <h2 id="result-title" class="result-heading">KNOCKOUT VICTORY</h2>
+          <p id="result-subtitle" class="subtitle">
+            KRONOS-V reactor core neutralized!
+          </p>
+
+          <div class="stats-grid">
+            <div class="stat-tile">
+              <span class="stat-label">Match Time</span>
+              <strong id="res-duration" class="stat-val">00:00</strong>
+            </div>
+            <div class="stat-tile">
+              <span class="stat-label">Punches Landed</span>
+              <strong id="res-punches" class="stat-val">0 / 0</strong>
+            </div>
+            <div class="stat-tile">
+              <span class="stat-label">Counter Hits</span>
+              <strong id="res-counters" class="stat-val">0</strong>
+            </div>
+            <div class="stat-tile">
+              <span class="stat-label">Strikes Dodged</span>
+              <strong id="res-dodges" class="stat-val">0</strong>
+            </div>
+          </div>
+
+          <!-- Separate Fitness Cards: Live BLE/Demo BPM vs Post-Match Google Health Synced Total Calories -->
+          <div class="fitness-panels">
+            <div class="fitness-box">
+              <div class="fitness-box-header">
+                <span>Match Heart Rate</span>
+                <span id="res-hr-demo-tag" class="demo-tag hidden">Demo data</span>
+              </div>
+              <div id="res-hr-metrics" class="hr-summary-row">
+                <div>
+                  <small>Average BPM</small>
+                  <strong id="res-avg-bpm">--</strong>
+                </div>
+                <div>
+                  <small>Peak BPM</small>
+                  <strong id="res-peak-bpm">--</strong>
+                </div>
+              </div>
+              <p id="res-hr-note" class="fitness-note">
+                Connect Fitbit Air or Demo HR before a match to record BPM.
+              </p>
+            </div>
+
+            <div class="fitness-box">
+              <div class="fitness-box-header">
+                <span>Synced total calories</span>
+                <span id="res-cal-badge" class="pill pill-muted">Optional</span>
+              </div>
+              <div class="cal-value-row">
+                <strong id="res-cal-value" class="cal-main-val">Unavailable</strong>
+              </div>
+              <p id="res-cal-note" class="fitness-note">
+                Fetched via Google Health API (<code>total-calories</code>, includes resting burn).
+              </p>
+              <div class="cal-actions">
+                <button id="btn-connect-ghealth" class="btn btn-sm btn-outline-cyan hidden">
+                  Connect Google Health
+                </button>
+                <button id="btn-retry-calories" class="btn btn-sm btn-ghost hidden">
+                  Retry Sync
+                </button>
+              </div>
+            </div>
+          </div>
+
+          <div class="start-actions">
+            <button id="btn-rematch" class="btn btn-lg btn-primary">
+              Rematch (Space)
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <script type="module" src="/src/main.ts"></script>
+  </body>
+</html>
