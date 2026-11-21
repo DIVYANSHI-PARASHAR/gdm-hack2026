@@ -1,5 +1,6 @@
 import './style.css';
 import { estimateCalories } from './ble/calorieEstimate';
+import { matchHeartRatePlot } from './ble/matchHeartRatePlot';
 import { SoundEngine } from './audio/soundEngine';
 import {
   FitbitHeartRateManager,
@@ -16,7 +17,6 @@ import {
   CombatEvent,
   ExchangeSummaryPayload,
   StrategyDecisionResponse,
-  SyncedCaloriesResponse,
 } from './shared/types';
 import { WebcamController, WebcamState } from './vision/webcamController';
 
@@ -44,14 +44,7 @@ class IronPulseApp {
   private keyLeanLeft = false;
   private keyLeanRight = false;
 
-  // Server capability & Google Health state
-  private googleHealthConfigured = false;
-  private googleHealthConnected = false;
   private lastStrategyLatencyMs: number | null = null;
-
-  // Last completed match timestamps for post-match calorie sync
-  private completedMatchStartMs: number | null = null;
-  private completedMatchEndMs: number | null = null;
 
   private lastFramePerfMs = performance.now();
 
@@ -104,7 +97,6 @@ class IronPulseApp {
 
     this.bindUiEvents();
     this.bindKeyboardControls();
-    void this.fetchServerConfig();
 
     // Expose read-only inspection handle for verification smoke tests
     (window as unknown as Record<string, unknown>).__IRON_PULSE__ = {
@@ -114,22 +106,6 @@ class IronPulseApp {
     };
 
     requestAnimationFrame((now) => this.tick(now));
-  }
-
-  private async fetchServerConfig(): Promise<void> {
-    try {
-      const res = await fetch('/api/config');
-      if (!res.ok) return;
-      const data = (await res.json()) as {
-        geminiConfigured?: boolean;
-        googleHealthConfigured?: boolean;
-        googleHealthConnected?: boolean;
-      };
-      this.googleHealthConfigured = Boolean(data.googleHealthConfigured);
-      this.googleHealthConnected = Boolean(data.googleHealthConnected);
-    } catch {
-      // Offline / zero-credential fallback works seamlessly
-    }
   }
 
   private bindUiEvents(): void {
@@ -204,44 +180,9 @@ class IronPulseApp {
         : 'Sound: ON';
     });
 
-    // Fitbit Air BLE + Demo HR controls
+    // Fitbit Air pairing
     el<HTMLButtonElement>('btn-connect-fitbit').addEventListener('click', () => {
       void this.hrManager.connectFitbitAir();
-    });
-
-    el<HTMLButtonElement>('btn-demo-hr').addEventListener('click', () => {
-      const state = this.hrManager.getState();
-      if (state.source === 'demo') {
-        this.hrManager.disconnect();
-      } else {
-        this.hrManager.startDemoMode();
-      }
-    });
-
-    el<HTMLButtonElement>('btn-disconnect-hr').addEventListener('click', () => {
-      this.hrManager.disconnect();
-    });
-
-    el<HTMLButtonElement>('btn-hr-guide').addEventListener('click', () => {
-      el<HTMLDivElement>('hr-guide-popover').classList.toggle('hidden');
-    });
-
-    // Google Health OAuth + Synced Calories retry
-    el<HTMLButtonElement>('btn-connect-ghealth').addEventListener('click', () => {
-      this.openGoogleHealthOAuthPopup();
-    });
-
-    el<HTMLButtonElement>('btn-retry-calories').addEventListener('click', () => {
-      void this.loadSyncedMatchCalories();
-    });
-
-    window.addEventListener('message', (ev: MessageEvent) => {
-      if (ev.origin !== window.location.origin) return;
-      const data = ev.data as { type?: string; ok?: boolean } | null;
-      if (data?.type === 'GOOGLE_HEALTH_OAUTH_COMPLETE') {
-        this.googleHealthConnected = Boolean(data.ok);
-        void this.loadSyncedMatchCalories();
-      }
     });
   }
 
@@ -450,10 +391,8 @@ class IronPulseApp {
   private beginFight(): void {
     this.keyLeanLeft = false;
     this.keyLeanRight = false;
-    this.completedMatchStartMs = null;
-    this.completedMatchEndMs = null;
     this.calorieEstimate = { kcal: 0, measuredMs: 0, includesDemo: false };
-    for (const id of ['comic-hit', 'comic-ouch']) {
+    for (const id of ['comic-hit', 'comic-ouch', 'comic-victory']) {
       const node = el<HTMLDivElement>(id);
       for (const animation of node.getAnimations()) animation.cancel();
       node.hidden = true;
@@ -498,8 +437,11 @@ class IronPulseApp {
         this.hrManager.notifyExertion(0.1);
         break;
       case 'MATCH_VICTORY':
+        this.showComicImpact('victory');
+        this.onMatchFinished(true);
+        break;
       case 'MATCH_DEFEAT':
-        this.onMatchFinished(event.type === 'MATCH_VICTORY');
+        this.onMatchFinished(false);
         break;
       default:
         break;
@@ -555,23 +497,13 @@ class IronPulseApp {
     }
 
     const snap = this.combat.getSnapshot();
-    this.completedMatchStartMs = snap.matchStartWallMs;
-    this.completedMatchEndMs = snap.matchEndWallMs ?? Date.now();
     const hrSummary = this.hrManager.endMatchRecording();
 
     const resultPanel = el<HTMLElement>('screen-result');
     resultPanel.classList.toggle('victory', victory);
     resultPanel.classList.toggle('defeat', !victory);
 
-    el<HTMLDivElement>('result-eyebrow').textContent = victory
-      ? 'CHALLENGER TRIUMPHANT'
-      : 'ARMOR DEPLETED';
-    const heading = el<HTMLHeadingElement>('result-title');
-    heading.textContent = victory ? 'KNOCKOUT VICTORY' : 'DEFEAT';
-    heading.style.color = victory ? '#39ff9f' : '#ff1744';
-    el<HTMLParagraphElement>('result-subtitle').textContent = victory
-      ? 'You knocked out KAI THE BRAWLER!'
-      : 'KAI THE BRAWLER overwhelmed your guard. Study his windup and strike back!';
+    el('result-title').textContent = victory ? 'Victory' : 'Defeat';
 
     el<HTMLElement>('res-duration').textContent = this.formatClock(
       snap.elapsedFightMs
@@ -584,148 +516,52 @@ class IronPulseApp {
       snap.stats.dodgesSucceeded
     );
 
-    // Populate Heart Rate result card (strictly separated from Synced Calories)
-    const demoTag = el<HTMLSpanElement>('res-hr-demo-tag');
-    demoTag.classList.toggle('hidden', !hrSummary.isDemo);
-
-    if (hrSummary.sampleCount > 0 && hrSummary.averageBpm && hrSummary.peakBpm) {
-      el<HTMLElement>('res-avg-bpm').textContent = hrSummary.isDemo
-        ? `${hrSummary.averageBpm} BPM (Demo data)`
-        : `${hrSummary.averageBpm} BPM`;
-      el<HTMLElement>('res-peak-bpm').textContent = hrSummary.isDemo
-        ? `${hrSummary.peakBpm} BPM (Demo data)`
-        : `${hrSummary.peakBpm} BPM`;
-      el<HTMLParagraphElement>('res-hr-note').textContent = hrSummary.isDemo
-        ? `Recorded ${hrSummary.sampleCount} simulated samples (Demo data).`
-        : `Recorded ${hrSummary.sampleCount} live BLE heart rate samples during the match.`;
-    } else {
-      el<HTMLElement>('res-avg-bpm').textContent = '--';
-      el<HTMLElement>('res-peak-bpm').textContent = '--';
-      el<HTMLParagraphElement>('res-hr-note').textContent =
-        'No heart rate samples recorded during this match.';
+    el('res-avg-bpm').textContent = hrSummary.averageBpm === null ? '—' : `${hrSummary.averageBpm} BPM`;
+    el('res-peak-bpm').textContent = hrSummary.peakBpm === null ? '—' : `${hrSummary.peakBpm} BPM`;
+    const plot = matchHeartRatePlot(
+      this.hrManager.getMatchSamples(),
+      snap.matchStartWallMs ?? 0,
+      snap.matchEndWallMs ?? Date.now(),
+    );
+    el('match-hr-chart').classList.toggle('hidden', !plot);
+    if (plot) {
+      el('match-hr-min').textContent = String(plot.minBpm);
+      el('match-hr-max').textContent = String(plot.maxBpm);
+      document.getElementById('match-hr-line')?.setAttribute('d', plot.path);
+      document.getElementById('match-hr-points')?.setAttribute('d', plot.points
+        .map(({ x, y }) => `M${x.toFixed(2)} ${y.toFixed(2)}h0.01`).join(' '));
     }
+    const hrNote = el('res-hr-note');
+    hrNote.classList.toggle('hidden', Boolean(plot) && !hrSummary.isDemo);
+    hrNote.textContent = hrSummary.isDemo ? 'Includes demo data.' : 'No heart rate recorded.';
 
     const { kcal, measuredMs, includesDemo } = this.calorieEstimate;
-    el('res-estimated-calories').textContent = measuredMs > 0
-      ? `≈ ${kcal.toFixed(1)} kcal${includesDemo ? ' (Demo data)' : ''}`
-      : 'Unavailable';
+    el('res-calories').textContent = measuredMs > 0 ? `≈ ${kcal.toFixed(1)} kcal` : '—';
     const coverage = snap.elapsedFightMs > 0 ? Math.min(100, Math.round(100 * measuredMs / snap.elapsedFightMs)) : 0;
-    el('res-estimated-calories-note').textContent = measuredMs > 0
-      ? `Heart-rate coverage ${coverage}% of active play. Profile: male, 25, 5′9″, 189 lb.`
-      : 'Connect Fitbit Air or simulate heart rate to estimate calories during play.';
-
-    // Trigger post-match Google Health Synced Total Calories check
-    void this.loadSyncedMatchCalories();
+    const calorieNote = el('res-calories-note');
+    calorieNote.classList.toggle('hidden', !includesDemo && (coverage === 0 || coverage === 100));
+    calorieNote.textContent = [
+      coverage > 0 && coverage < 100 ? `${coverage}% heart-rate coverage.` : '',
+      includesDemo ? 'Includes demo data.' : '',
+    ].filter(Boolean).join(' ');
     this.syncModalVisibility();
-  }
-
-  private openGoogleHealthOAuthPopup(): void {
-    const w = 520;
-    const h = 660;
-    const left = window.screenX + Math.max(0, (window.outerWidth - w) / 2);
-    const top = window.screenY + Math.max(0, (window.outerHeight - h) / 2);
-    window.open(
-      '/api/health/oauth/start',
-      'google_health_oauth',
-      `width=${w},height=${h},left=${left},top=${top}`
-    );
-  }
-
-  private async loadSyncedMatchCalories(): Promise<void> {
-    const valEl = el<HTMLElement>('res-cal-value');
-    const badgeEl = el<HTMLElement>('res-cal-badge');
-    const noteEl = el<HTMLParagraphElement>('res-cal-note');
-    const connectBtn = el<HTMLButtonElement>('btn-connect-ghealth');
-    const retryBtn = el<HTMLButtonElement>('btn-retry-calories');
-
-    await this.fetchServerConfig();
-
-    if (!this.googleHealthConfigured) {
-      valEl.textContent = 'Unavailable';
-      badgeEl.textContent = 'Not Configured';
-      noteEl.textContent =
-        'Optional Google Health OAuth is not configured in .env. Live BLE BPM remains independent.';
-      connectBtn.classList.add('hidden');
-      retryBtn.classList.add('hidden');
-      return;
-    }
-
-    if (!this.googleHealthConnected) {
-      valEl.textContent = 'Not Connected';
-      badgeEl.textContent = 'OAuth 2.0';
-      noteEl.textContent =
-        'Connect Google Health (read-only fitness scope) to import synced total calories for this match interval.';
-      connectBtn.classList.remove('hidden');
-      retryBtn.classList.add('hidden');
-      return;
-    }
-
-    if (!this.completedMatchStartMs || !this.completedMatchEndMs) {
-      valEl.textContent = 'Unavailable';
-      return;
-    }
-
-    valEl.textContent = 'Checking sync...';
-    badgeEl.textContent = 'Syncing';
-    connectBtn.classList.add('hidden');
-    retryBtn.classList.add('hidden');
-
-    try {
-      const res = await fetch('/api/health/match-calories', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          matchStartTimeMs: this.completedMatchStartMs,
-          matchEndTimeMs: this.completedMatchEndMs,
-        }),
-      });
-
-      const data = (await res.json()) as SyncedCaloriesResponse;
-
-      if (data.status === 'synced' && typeof data.kcal === 'number') {
-        valEl.textContent = `${data.kcal.toFixed(1)} kcal`;
-        badgeEl.textContent = 'Synced';
-        noteEl.textContent = data.message;
-        retryBtn.classList.remove('hidden');
-      } else if (data.status === 'awaiting_sync') {
-        valEl.textContent = 'Awaiting sync';
-        badgeEl.textContent = 'Pending';
-        noteEl.textContent = data.message;
-        retryBtn.classList.remove('hidden');
-      } else if (data.status === 'disconnected') {
-        this.googleHealthConnected = false;
-        valEl.textContent = 'Not Connected';
-        badgeEl.textContent = 'Reconnect';
-        noteEl.textContent = data.message;
-        connectBtn.classList.remove('hidden');
-      } else {
-        valEl.textContent = 'Unavailable';
-        badgeEl.textContent = 'Unavailable';
-        noteEl.textContent = data.message;
-        retryBtn.classList.remove('hidden');
-      }
-    } catch {
-      valEl.textContent = 'Unavailable';
-      badgeEl.textContent = 'Offline';
-      noteEl.textContent = 'Could not reach local server for calorie sync.';
-      retryBtn.classList.remove('hidden');
-    }
   }
 
   private renderHeartRateHud(state: HeartRateManagerState): void {
     const bpmEl = el<HTMLElement>('hr-bpm-value');
-    const demoBadge = el<HTMLElement>('hr-demo-badge');
     const pill = el<HTMLElement>('hr-status-pill');
     const detail = el<HTMLElement>('hr-status-detail');
     const heartIcon = el<HTMLElement>('hr-heart-icon');
     const connectBtn = el<HTMLButtonElement>('btn-connect-fitbit');
-    const demoBtn = el<HTMLButtonElement>('btn-demo-hr');
-    const disconnectBtn = el<HTMLButtonElement>('btn-disconnect-hr');
 
-    bpmEl.textContent =
-      state.currentBpm !== null ? String(state.currentBpm) : '--';
-    demoBadge.classList.toggle('hidden', !state.isDemo);
-    detail.textContent = state.statusDetail;
+    const bpm = state.status === 'connected' ? state.currentBpm : null;
+    bpmEl.textContent = bpm === null ? '—' : String(bpm);
+    detail.textContent = bpm === null ? state.statusDetail : 'BPM-driven pulse';
+    const wave = document.getElementById('hr-waveform');
+    wave?.classList.toggle('is-live', bpm !== null);
+    if (bpm !== null) {
+      el('hr-bpm-value').closest('.hr-card')?.setAttribute('style', `--beat-period: ${60 / bpm}s`);
+    }
 
     const statusLabels: Record<HeartRateManagerState['status'], string> = {
       unsupported: 'Unsupported browser',
@@ -737,17 +573,9 @@ class IronPulseApp {
     };
     pill.textContent = statusLabels[state.status];
 
-    const isLive = state.status === 'connected' && state.currentBpm !== null;
-    heartIcon.classList.toggle('pulsing', isLive);
-    connectBtn.disabled =
-      state.status === 'pairing' || state.status === 'unsupported';
-    demoBtn.textContent = state.isDemo
-      ? 'Stop Demo data'
-      : 'Simulate HR (Demo data)';
-    disconnectBtn.classList.toggle(
-      'hidden',
-      state.source === 'none' || state.status === 'idle'
-    );
+    heartIcon.classList.toggle('pulsing', bpm !== null);
+    connectBtn.classList.toggle('hidden', bpm !== null && !state.isDemo);
+    connectBtn.disabled = state.status === 'pairing' || state.status === 'unsupported';
   }
 
   private updateControlModeBadge(): void {
@@ -815,7 +643,7 @@ class IronPulseApp {
     }, 500);
   }
 
-  private showComicImpact(kind: 'hit' | 'ouch'): void {
+  private showComicImpact(kind: 'hit' | 'ouch' | 'victory'): void {
     const node = el<HTMLDivElement>(`comic-${kind}`);
     for (const animation of node.getAnimations()) animation.cancel();
     node.hidden = false;
@@ -827,7 +655,7 @@ class IronPulseApp {
           { opacity: 1, scale: 1.08, offset: 0.19 },
           { opacity: 1, scale: 1, offset: 0.68 },
           { opacity: 0, scale: 0.94 },
-        ], { duration: 660, easing: 'ease-out' });
+        ], { duration: kind === 'victory' ? 1600 : 660, easing: 'ease-out' });
     animation.onfinish = () => { node.hidden = true; };
   }
 

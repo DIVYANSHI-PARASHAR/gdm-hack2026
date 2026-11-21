@@ -77,9 +77,9 @@ The Debug Panel (`` ` ``) shows software **Detect -> Render** timing (`capturePe
 
 ---
 
-## Fitbit Air Live BPM (Web Bluetooth) & Demo Mode
+## Fitbit Air Live BPM (Web Bluetooth)
 
-Match results show an estimated calorie burn using the male [Keytel exercise equation](https://pubmed.ncbi.nlm.nih.gov/15966347/) for age 25 and 189 lb. The reference profile is 5′9″. The equation uses heart rate, age, sex, and weight. It counts active fight time with a live or simulated reading, shows coverage, and labels estimates that include simulated data.
+Match results show **Calories Burnt**, calculated with the male [Keytel exercise equation](https://pubmed.ncbi.nlm.nih.gov/15966347/) for age 25 and 189 lb. The reference profile is 5′9″. The equation uses heart rate, age, sex, and weight. It counts active fight time with a heart-rate reading and shows coverage when readings are missing.
 
 Live heart rate uses the standard Bluetooth Low Energy **Heart Rate Service (`0x180D`)** and **Heart Rate Measurement Characteristic (`0x2A37`)**, parsing both 8-bit (`UINT8`) and 16-bit (`UINT16`) BPM formats via the BLE flags byte.
 
@@ -87,17 +87,16 @@ Live heart rate uses the standard Bluetooth Low Energy **Heart Rate Service (`0x
 1. Open **Google Health** on your phone.
 2. Go to **Connections** and select your **Fitbit Air**.
 3. Choose **Share heart rate** and tap **Get started** *(your phone enables BLE heart-rate broadcast; your laptop runs the game)*.
-4. Open `http://localhost:5173` in desktop **Google Chrome** or **Microsoft Edge**, click **Connect Fitbit Air** in the bottom-left HUD card, and select your Fitbit Air in the browser chooser.
+4. Open `http://localhost:5173` in desktop **Google Chrome** or **Microsoft Edge**, click **Connect Fitbit Air** below Kai’s health bar on the top left, and select your Fitbit Air in the browser chooser.
 
-- Shows live BPM during combat and **Average / Peak BPM** on the post-match Result Screen.
+- The live pulse animation follows the latest Fitbit BPM. The match report plots recorded BPM readings beneath the average and peak.
 - Handles unsupported browsers, pairing cancelation, stale data (> 6.5s without packets), and mid-match disconnects without interrupting gameplay.
-- **Testing without hardware:** Click **Simulate HR (Demo data)** to activate a dynamic exertion-linked heart-rate stream explicitly labeled **`Demo data`** everywhere it appears.
 
 ---
 
 ## Optional External API Setup (`.env`)
 
-Copy `.env.example` to `.env` if you want to enable live Gemini strategy routing or post-match Google Health calorie sync:
+Copy `.env.example` to `.env` if you want to enable live Gemini strategy routing or the optional Google Health API endpoints:
 
 ```bash
 cp .env.example .env
@@ -113,7 +112,5 @@ cp .env.example .env
 - Add Authorized Redirect URI: `http://localhost:5173/api/health/oauth/callback`.
 - Set `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, and `GOOGLE_REDIRECT_URI` in `.env`.
 - Uses the minimum read-only scope: `https://www.googleapis.com/auth/googlehealth.activity_and_fitness.readonly`.
-- After a match ends, click **Connect Google Health** (or **Retry Sync**) on the Result Screen. The server queries `dataTypes/total-calories/dataPoints:rollUp` at 1-minute (`60s`) storage resolution for the exact match `[startTime, endTime)` window:
-  - Displays **Synced total calories** (which includes basal resting burn + active expenditure per Google Health `total-calories` semantics).
-  - Shows **Awaiting sync** with a **Retry Sync** button if your Fitbit Air has not yet finished syncing the full match window to Google Health, or **Unavailable** if intervals cannot be isolated reliably.
-  - OAuth tokens stay strictly server-side (`HttpOnly` session) and health data is never logged or sent to Gemini.
+- The server retains OAuth and total-calories endpoints for API clients. The game’s match report uses Fitbit heart rate.
+- OAuth tokens stay strictly server-side (`HttpOnly` session) and health data is never logged or sent to Gemini.

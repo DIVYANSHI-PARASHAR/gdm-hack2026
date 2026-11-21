@@ -12,16 +12,18 @@
       <div class="comic-impact comic-hit" id="comic-hit" hidden><span>HIT!!!</span></div>
       <div class="comic-impact comic-ouch" id="comic-ouch" hidden><span>OUCH!!!</span></div>
 
-      <!-- Top HUD: Player & Boss Health Bars + Round Info -->
+      <div class="comic-impact comic-victory" id="comic-victory" hidden><span>Victory!</span></div>
+
+      <!-- Fight HUD -->
       <header id="hud-top">
-        <div class="fighter-panel player-panel">
+        <div class="fighter-panel boss-panel">
           <div class="fighter-header">
-            <span class="fighter-name">CHALLENGER</span>
-            <span id="input-mode-badge" class="pill pill-cyan">KEYBOARD</span>
-            <span id="player-hp-text" class="hp-num">100 / 100</span>
+            <span class="fighter-name">KAI THE BRAWLER</span>
+            <span id="boss-strategy-badge" class="pill pill-magenta">PRESSURE OVERDRIVE</span>
+            <span id="boss-hp-text" class="hp-num">100 / 100</span>
           </div>
           <div class="hp-track">
-            <div id="player-hp-fill" class="hp-fill player-fill"></div>
+            <div id="boss-hp-fill" class="hp-fill boss-fill"></div>
           </div>
         </div>
 
@@ -31,16 +33,39 @@
           <div id="exchange-badge" class="exchange-label">EXCHANGE 1</div>
         </div>
 
-        <div class="fighter-panel boss-panel">
-          <div class="fighter-header boss-header">
-            <span id="boss-hp-text" class="hp-num">100 / 100</span>
-            <span id="boss-strategy-badge" class="pill pill-magenta">PRESSURE OVERDRIVE</span>
-            <span class="fighter-name">KAI THE BRAWLER</span>
+        <div class="fighter-panel player-panel">
+          <div class="fighter-header">
+            <span id="player-hp-text" class="hp-num">100 / 100</span>
+            <span id="input-mode-badge" class="pill pill-cyan">KEYBOARD</span>
+            <span class="fighter-name">CHALLENGER</span>
           </div>
-          <div class="hp-track boss-track">
-            <div id="boss-hp-fill" class="hp-fill boss-fill"></div>
+          <div class="hp-track">
+            <div id="player-hp-fill" class="hp-fill player-fill"></div>
           </div>
         </div>
+
+        <section class="hud-card hr-card" aria-label="Fitbit heart rate">
+          <div class="hr-top-row">
+            <div class="hr-bpm-block">
+              <span id="hr-heart-icon" class="heart-icon" aria-hidden="true">♥</span>
+              <span id="hr-bpm-value" class="hr-bpm-num">—</span>
+              <span class="hr-unit">BPM</span>
+            </div>
+            <span id="hr-status-pill" class="status-dot-pill">Ready</span>
+          </div>
+          <svg id="hr-waveform" class="hr-waveform" viewBox="0 0 240 48" role="img" aria-label="Animated pulse based on Fitbit heart rate" preserveAspectRatio="none">
+            <path class="hr-wave-idle" d="M0 32H240" />
+            <defs>
+              <path id="hr-beat" d="M0 32h17l5-4 5 4h6l4 4 5-28 6 31 5-7h8l6-7 7 7h6" />
+            </defs>
+            <g class="hr-wave-trace">
+              <use href="#hr-beat" /><use href="#hr-beat" x="80" />
+              <use href="#hr-beat" x="160" /><use href="#hr-beat" x="240" />
+            </g>
+          </svg>
+          <div id="hr-status-detail" class="hr-detail" role="status">Connect to display live BPM.</div>
+          <button id="btn-connect-fitbit" class="btn btn-sm btn-outline-cyan">Connect Fitbit Air</button>
+        </section>
       </header>
 
       <!-- Mid-screen Telegraph & Hit Callout -->
@@ -72,65 +97,11 @@
         </div>
       </aside>
 
-      <!-- Bottom HUD: Fitbit Air Live BPM (Left), Controls Legend (Center), Webcam Preview (Right) -->
       <footer id="hud-bottom">
-        <!-- Fitbit Air BLE + Demo HR Widget -->
-        <section class="hud-card hr-card" aria-label="Heart Rate Monitor">
-          <div class="hr-top-row">
-            <div class="hr-bpm-block">
-              <span id="hr-heart-icon" class="heart-icon">♥</span>
-              <span id="hr-bpm-value" class="hr-bpm-num">--</span>
-              <span class="hr-unit">BPM</span>
-              <span id="hr-demo-badge" class="demo-tag hidden">Demo data</span>
-            </div>
-            <span id="hr-status-pill" class="status-dot-pill">Idle</span>
-          </div>
-          <div id="hr-status-detail" class="hr-detail">
-            Optional Fitbit Air live BLE heart rate
-          </div>
-          <div class="hr-actions">
-            <button id="btn-connect-fitbit" class="btn btn-sm btn-outline-cyan">
-              Connect Fitbit Air
-            </button>
-            <button id="btn-demo-hr" class="btn btn-sm btn-ghost">
-              Simulate HR (Demo data)
-            </button>
-            <button id="btn-hr-guide" class="btn btn-sm btn-ghost" title="Phone pairing instructions">
-              ? Setup
-            </button>
-            <button id="btn-disconnect-hr" class="btn btn-sm btn-ghost hidden">
-              Disconnect
-            </button>
-          </div>
-          <div id="hr-guide-popover" class="hr-guide hidden">
-            <strong>Broadcast Fitbit Air Heart Rate:</strong>
-            <ol>
-              <li>Open <strong>Google Health</strong> on your phone.</li>
-              <li>Go to <strong>Connections</strong> and select your <strong>Fitbit Air</strong>.</li>
-              <li>Choose <strong>Share heart rate</strong> and tap <strong>Get started</strong>.</li>
-              <li>Click <strong>Connect Fitbit Air</strong> here on your laptop (Chrome/Edge on localhost).</li>
-            </ol>
-            <small>Your phone enables broadcast; your laptop runs the game directly via BLE (0x180D / 0x2A37).</small>
-          </div>
-        </section>
-
-        <!-- Center Keyboard & Action Strip -->
-        <section class="controls-strip">
-          <div class="key-hints">
-            <span><kbd>A</kbd>/<kbd>←</kbd> Lean Left</span>
-            <span><kbd>D</kbd>/<kbd>→</kbd> Lean Right</span>
-            <span><kbd>J</kbd>/<kbd>Z</kbd> Left Punch</span>
-            <span><kbd>K</kbd>/<kbd>X</kbd> Right Punch</span>
-          </div>
-          <div class="utility-btns">
-            <button id="btn-toggle-debug" class="btn btn-sm btn-ghost">
-              Debug (<kbd>`</kbd>)
-            </button>
-            <button id="btn-toggle-mute" class="btn btn-sm btn-ghost">
-              Sound: ON
-            </button>
-          </div>
-        </section>
+        <div class="utility-btns">
+          <button id="btn-toggle-debug" class="btn btn-sm btn-ghost">Debug</button>
+          <button id="btn-toggle-mute" class="btn btn-sm btn-ghost">Sound: ON</button>
+        </div>
 
         <!-- Mirrored Webcam Preview Card -->
         <section class="hud-card cam-card" aria-label="Webcam Motion Controls">
@@ -149,7 +120,7 @@
                 Enable Webcam
               </button>
               <button id="btn-recalibrate" class="btn btn-sm btn-ghost" disabled>
-                Calibrate (C)
+                Calibrate
               </button>
             </div>
           </div>
@@ -158,11 +129,7 @@
 
       <!-- Non-blocking Match Result Panel (Docked Right) -->
       <aside id="screen-result" class="result-panel hidden" aria-label="Match Results">
-        <div id="result-eyebrow" class="eyebrow">MATCH COMPLETE</div>
-        <h2 id="result-title" class="result-heading">KNOCKOUT VICTORY</h2>
-        <p id="result-subtitle" class="subtitle result-subtitle">
-          KAI THE BRAWLER knocked out!
-        </p>
+        <h2 id="result-title" class="result-heading">Victory</h2>
 
         <div class="stats-grid">
           <div class="stat-tile">
@@ -183,60 +150,39 @@
           </div>
         </div>
 
-        <!-- Separate Fitness Cards: Live BLE/Demo BPM vs Post-Match Google Health Synced Total Calories -->
-        <div class="fitness-panels">
-          <div class="fitness-box">
-            <div class="fitness-box-header">
-              <span>Match Heart Rate</span>
-              <span id="res-hr-demo-tag" class="demo-tag hidden">Demo data</span>
+        <section class="result-heart" aria-labelledby="result-heart-title">
+          <div class="result-health-row">
+            <div>
+              <h3 id="result-heart-title">Average Heart Rate</h3>
+              <strong id="res-avg-bpm">—</strong>
             </div>
-            <div id="res-hr-metrics" class="hr-summary-row">
-              <div>
-                <small>Average BPM</small>
-                <strong id="res-avg-bpm">--</strong>
-              </div>
-              <div>
-                <small>Peak BPM</small>
-                <strong id="res-peak-bpm">--</strong>
-              </div>
-            </div>
-            <div class="hr-summary-row hr-calories">
-              <div>
-                <small>Estimated calories</small>
-                <strong id="res-estimated-calories">Unavailable</strong>
-              </div>
-            </div>
-            <p id="res-estimated-calories-note" class="fitness-note">Based on heart rate during active play.</p>
-            <p id="res-hr-note" class="fitness-note">
-              Connect Fitbit Air or Demo HR before a match to record BPM.
-            </p>
-          </div>
-
-          <div class="fitness-box">
-            <div class="fitness-box-header">
-              <span>Synced total calories</span>
-              <span id="res-cal-badge" class="pill pill-muted">Optional</span>
-            </div>
-            <div class="cal-value-row">
-              <strong id="res-cal-value" class="cal-main-val">Unavailable</strong>
-            </div>
-            <p id="res-cal-note" class="fitness-note">
-              Fetched via Google Health API (<code>total-calories</code>, includes resting burn).
-            </p>
-            <div class="cal-actions">
-              <button id="btn-connect-ghealth" class="btn btn-sm btn-outline-cyan hidden">
-                Connect Google Health
-              </button>
-              <button id="btn-retry-calories" class="btn btn-sm btn-ghost hidden">
-                Retry Sync
-              </button>
+            <div>
+              <h3>Peak</h3>
+              <strong id="res-peak-bpm">—</strong>
             </div>
           </div>
+          <div id="match-hr-chart" class="match-hr-chart hidden">
+            <div class="match-hr-scale" aria-hidden="true">
+              <span id="match-hr-max"></span><span id="match-hr-min"></span>
+            </div>
+            <svg id="match-hr-plot" viewBox="0 0 320 64" role="img" aria-label="Heart rate over the match in BPM" preserveAspectRatio="none">
+              <path class="match-hr-grid" d="M0 4H320 M0 32H320 M0 60H320" />
+              <path id="match-hr-line" class="match-hr-line" />
+              <path id="match-hr-points" class="match-hr-points" />
+            </svg>
+            <div class="match-hr-time"><span>Start</span><span>Finish</span></div>
+          </div>
+          <p id="res-hr-note" class="fitness-note">No heart rate recorded.</p>
+        </section>
+        <div class="result-calories">
+          <span>Calories Burnt</span>
+          <strong id="res-calories">—</strong>
         </div>
+        <p id="res-calories-note" class="fitness-note"></p>
 
         <div class="result-actions">
           <button id="btn-rematch" class="btn btn-lg btn-primary btn-rematch-full">
-            Rematch (Space)
+            Rematch
           </button>
         </div>
       </aside>

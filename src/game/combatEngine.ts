@@ -340,9 +340,12 @@ export class CombatEngine {
   }
 
   public update(dtMs: number, wallClockMs: number = Date.now()): void {
-    if (this.phase !== 'FIGHTING') return;
-
     const clampedDt = Math.min(100, Math.max(0, dtMs));
+    if (this.phase === 'VICTORY') {
+      this.bossStateTimerMs = Math.max(0, this.bossStateTimerMs - clampedDt);
+      return;
+    }
+    if (this.phase !== 'FIGHTING') return;
     this.nowMs += clampedDt;
     this.elapsedFightMs += clampedDt;
 
@@ -507,7 +510,7 @@ export class CombatEngine {
     if (this.bossHp <= 0) {
       this.phase = 'VICTORY';
       this.matchEndWallMs = Date.now();
-      this.enterBossState('KO', 2000);
+      this.enterBossState('KO', 760);
       this.emit({
         type: 'MATCH_VICTORY',
         timestampMs: this.nowMs,

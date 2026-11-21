@@ -163,6 +163,33 @@ describe('CombatEngine state machine', () => {
     expect(engine.getSnapshot().staleResponsesDiscarded).toBe(2);
   });
 
+  it('advances the knockout once after victory without extending the match clock', () => {
+    const events: CombatEvent[] = [];
+    const engine = new CombatEngine({ rng: () => 0.99, onEvent: (event) => events.push(event) });
+    engine.startMatch(1000);
+
+    for (let i = 0; i < 600 && engine.isFighting(); i++) {
+      const { bossState, bossAttackSide } = engine.getSnapshot();
+      engine.setLean(bossAttackSide === 'LEFT' ? 'RIGHT' : 'LEFT');
+      if (bossState === 'IDLE' || bossState === 'RECOVERY') engine.throwPunch('LEFT');
+      engine.update(50);
+    }
+
+    const result = engine.getSnapshot();
+    expect(result.phase).toBe('VICTORY');
+    expect(result.bossState).toBe('KO');
+    stepTime(engine, 250);
+    expect(engine.getSnapshot().bossStateProgress).toBeGreaterThan(0);
+    expect(engine.getSnapshot().bossStateProgress).toBeLessThan(1);
+    stepTime(engine, 1500);
+    expect(engine.getSnapshot().bossStateProgress).toBe(1);
+    expect(engine.getSnapshot().elapsedFightMs).toBe(result.elapsedFightMs);
+    expect(events.filter(({ type }) => type === 'MATCH_VICTORY')).toHaveLength(1);
+
+    engine.startMatch(3000);
+    expect(engine.getSnapshot().bossState).toBe('IDLE');
+  });
+
   it('allows entering CALIBRATING from DEFEAT/VICTORY when restarting webcam on rematch', () => {
     const engine = new CombatEngine({ rng: () => 0.1 });
     engine.startMatch(1000);

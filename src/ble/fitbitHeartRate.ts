@@ -281,6 +281,10 @@ export class FitbitHeartRateManager {
     return this.getMatchSummary();
   }
 
+  public getMatchSamples(): readonly HeartRateSample[] {
+    return this.matchSamples;
+  }
+
   public getMatchSummary(): MatchHeartRateSummary {
     if (this.matchSamples.length === 0) {
       return {

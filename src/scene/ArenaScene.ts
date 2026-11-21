@@ -44,6 +44,7 @@ export class ArenaScene {
   private shakeIntensity = 0;
   private bossFlashTimer = 0;
   private clockTime = 0;
+  private knockoutFloorOffset?: number;
   private currentCamX = 0;
   private currentCamRoll = 0;
   private resizeHandler: () => void;
@@ -509,19 +510,17 @@ export class ArenaScene {
     }
     this.ambientDust.rotation.y += dt * 0.04;
 
+    const fall = snapshot.bossState === 'KO'
+      ? THREE.MathUtils.smoothstep(snapshot.bossStateProgress, 0, 1)
+      : 0;
+
     // Update camera lean + punch kick + impact shake
-    const targetX =
-      snapshot.playerLean === 'LEFT'
-        ? -0.82
-        : snapshot.playerLean === 'RIGHT'
-          ? 0.82
-          : 0;
-    const targetRoll =
-      snapshot.playerLean === 'LEFT'
-        ? 0.13
-        : snapshot.playerLean === 'RIGHT'
-          ? -0.13
-          : 0;
+    const lean = snapshot.phase === 'VICTORY' ? 'NONE' : snapshot.playerLean;
+    const targetX = lean === 'LEFT' ? -0.82 : lean === 'RIGHT' ? 0.82 : 0;
+    const targetRoll = lean === 'LEFT' ? 0.13 : lean === 'RIGHT' ? -0.13 : 0;
+    const narrowKnockout = fall > 0 && window.innerWidth <= 650;
+    // Frame the full body above the match report when it docks at the bottom.
+    const knockoutPullback = narrowKnockout ? Math.max(0, 0.95 / this.camera.aspect - 1) * 1.35 * fall : 0;
 
     const lerpRate = 1 - Math.exp(-dt * 18);
     this.currentCamX += (targetX - this.currentCamX) * lerpRate;
@@ -543,20 +542,30 @@ export class ArenaScene {
     this.cameraRig.position.set(
       this.currentCamX + shakeX,
       1.68 + Math.abs(this.currentCamX) * -0.06 + shakeY,
-      3.45 + punchForwardKick
+      3.45 + punchForwardKick + knockoutPullback
     );
     this.camera.rotation.set(
-      -0.05,
+      -0.05 - fall * (narrowKnockout ? 0.54 : 0.32),
       this.currentCamX * -0.08,
       this.currentCamRoll
     );
 
     // Animate first-person cyber-brawler hands & forearms
     this.animatePlayerHands(snapshot);
+    this.playerLeftHand.group.position.y -= fall * 0.65;
+    this.playerRightHand.group.position.y -= fall * 0.65;
 
     // Animate KAI_THE_BRAWLER according to explicit combat state machine
     this.animateKaiBrawler(snapshot, dt);
     this.updateOpponentAvatar?.();
+    if (fall === 1) {
+      // Once the neutral pose has settled, place the actual mesh on the canvas.
+      this.knockoutFloorOffset ??= -new THREE.Box3()
+        .setFromObject(this.opponentAvatar ?? this.kai.root, true).min.y;
+      this.kai.root.position.y += this.knockoutFloorOffset;
+    } else {
+      this.knockoutFloorOffset = undefined;
+    }
 
     // Update sparks & shockwave
     this.updateFX(dt);
@@ -586,6 +595,7 @@ export class ArenaScene {
       install('readyplayer.me.glb', (model) => {
         this.updateOpponentAvatar = bindOpponentAvatar(model, this.kai);
         this.opponentAvatar = model;
+        this.knockoutFloorOffset = undefined;
         this.updateOpponentAvatar();
       }).catch((error: unknown) => console.warn('Opponent avatar unavailable', error)),
       install('Michelle.glb', (model) => {
@@ -878,21 +888,30 @@ export class ArenaScene {
         conduitColor = 0x4a2511;
         knuckleColor = 0x3b2314;
         conduitIntensity = 0.25;
-        const fall = Math.min(1, p * 1.4);
-        // Drop heavily to one knee on the canvas
-        kai.root.position.z = BOSS_BASE_Z - fall * 0.35;
-        kai.pelvis.position.y = 0.94 - fall * 0.42;
-        kai.screenLeftLeg.hip.rotation.set(-1.05 * fall, 0, 0);
-        kai.screenLeftLeg.knee.rotation.set(1.65 * fall, 0, 0);
-        kai.screenRightLeg.hip.rotation.set(0.18 * fall, 0, 0);
-        kai.screenRightLeg.knee.rotation.set(1.42 * fall, 0, 0);
-
-        kai.torso.rotation.set(0.58 * fall, 0, 0.08 * fall);
-        kai.head.rotation.set(0.52 * fall, 0, 0);
-        kai.screenLeftArm.shoulder.rotation.set(-0.25, 0, -0.35);
-        kai.screenLeftArm.elbow.rotation.set(-0.4, 0, 0);
-        kai.screenRightArm.shoulder.rotation.set(-0.25, 0, 0.35);
-        kai.screenRightArm.elbow.rotation.set(-0.4, 0, 0);
+        const fall = THREE.MathUtils.smoothstep(p, 0, 1);
+        const tilt = Math.PI / 2 * fall;
+        const pelvisHeight = 0.945 * BOSS_SCALE;
+        // Roll the torso onto its back around the pelvis as it drops to the canvas.
+        kai.root.rotation.set(0, tilt, tilt, 'ZYX');
+        kai.root.position.set(
+          pelvisHeight * Math.sin(tilt),
+          THREE.MathUtils.lerp(pelvisHeight, 0.26, fall) - pelvisHeight * Math.cos(tilt),
+          BOSS_BASE_Z - fall * 0.12,
+        );
+        kai.pelvis.position.y = 0.945;
+        kai.pelvis.rotation.set(0, 0.12 * (1 - fall), 0);
+        kai.torso.rotation.set(0.05 * (1 - fall), 0, 0);
+        kai.head.rotation.set(0, -0.18 * fall, 0);
+        for (const [arm, side] of [[kai.screenLeftArm, -1], [kai.screenRightArm, 1]] as const) {
+          arm.shoulder.rotation.set(-0.46 * (1 - fall), 0, side * (0.18 + fall * 0.17));
+          arm.elbow.rotation.set(THREE.MathUtils.lerp(-1.98, -0.16, fall), 0, 0);
+          arm.wrist.rotation.set(0, 0, 0);
+        }
+        for (const [leg, side] of [[kai.screenLeftLeg, -1], [kai.screenRightLeg, 1]] as const) {
+          leg.hip.rotation.set(-0.08, 0, side * (0.05 + fall * 0.06));
+          leg.knee.rotation.set(0.24 - fall * 0.15, 0, 0);
+          leg.ankle.rotation.set(-0.1, 0, 0);
+        }
         break;
       }
 
