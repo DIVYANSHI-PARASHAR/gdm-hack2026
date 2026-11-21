@@ -221,6 +221,10 @@ export class WebcamController {
     this.setState('calibrating');
   }
 
+  public resetHugState(): void {
+    this.recognizer.resetHugState();
+  }
+
   public stop(): void {
     this.sessionId += 1;
     this.startPromise = null;
@@ -482,7 +486,9 @@ export class WebcamController {
     this.lastCalibrationProgress = gesture.calibrationProgress;
     this.pendingCapturePerfMs = capturePerfMs;
 
-    if (gesture.punchTriggered === 'LEFT') {
+    if (gesture.hugTriggered || gesture.hugHoldProgress > 0.12) {
+      this.lastRecognizedGesture = 'HUGGING 🫂';
+    } else if (gesture.punchTriggered === 'LEFT') {
       this.lastRecognizedGesture = 'PUNCH_LEFT';
     } else if (gesture.punchTriggered === 'RIGHT') {
       this.lastRecognizedGesture = 'PUNCH_RIGHT';

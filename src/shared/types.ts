@@ -130,3 +130,124 @@ export interface SyncedCaloriesResponse {
   matchDurationSec?: number;
   message: string;
 }
+
+export interface ShopifyProductVariant {
+  id: string;
+  title: string;
+  size: string;
+  color: string;
+  price: {
+    amount: string;
+    currencyCode: string;
+  };
+  availableForSale: boolean;
+  quantityAvailable?: number;
+  image?: { url: string; altText?: string };
+}
+
+export interface ShopifyProduct {
+  id: string;
+  title: string;
+  handle: string;
+  description: string;
+  vendor: string;
+  featuredImage: { url: string; altText?: string };
+  sizes: string[];
+  colors: string[];
+  variants: ShopifyProductVariant[];
+  onlineStoreUrl?: string;
+}
+
+export interface ShoppingChatMessage {
+  role: 'user' | 'assistant' | 'system';
+  content: string;
+  timestamp?: number;
+}
+
+export interface ShoppingAgentResponse {
+  reply: string;
+  selectedVariant: ShopifyProductVariant | null;
+  alternatives?: ShopifyProductVariant[];
+  clarificationNeeded?: boolean;
+  modelUsed?: string;
+  source?: 'gemini' | 'local_agent';
+}
+
+export interface ShopifyCartHandoff {
+  cartId: string;
+  checkoutUrl: string;
+  totalAmount: string;
+  currencyCode: string;
+  lines: Array<{
+    variantId: string;
+    title: string;
+    quantity: number;
+    price: string;
+  }>;
+}
+
+export interface SelectedOutfitReview {
+  merchant: string;
+  item: string;
+  size: string;
+  color: string;
+  price: string;
+  variantId: string;
+  productId: string;
+}
+
+export interface ShopifyBuyerProfile {
+  name: string;
+  email: string;
+  shippingAddress: string;
+  paymentLabel: string;
+  storeDomain: string;
+}
+
+export interface ShopifyPurchaseReceipt {
+  orderNumber: string;
+  status: 'purchased';
+  cartId: string;
+  checkoutUrl: string;
+  merchant: string;
+  itemTitle: string;
+  variantId: string;
+  variantTitle: string;
+  size: string;
+  color: string;
+  totalAmount: string;
+  currencyCode: string;
+  buyer: ShopifyBuyerProfile;
+  purchasedAtIso: string;
+  source: 'live_shopify' | 'fallback_cache';
+}
+
+export interface ReferenceLuxuryItem {
+  title: string;
+  brand: string;
+  styleCode: string;
+  retailPrice: string;
+  url: string;
+  description: string;
+  imageUrl: string;
+  keyDetails: string[];
+}
+
+export interface ShopifySimilarProductMatch {
+  product: ShopifyProduct;
+  shopifyPageUrl: string;
+  matchScore: number;
+  badge: string;
+  matchReason: string;
+}
+
+export interface SimilarProductsResponse {
+  referenceItem: ReferenceLuxuryItem;
+  matches: ShopifySimilarProductMatch[];
+  topShopifyUrl: string;
+  agentSummary: string;
+  modelUsed: string;
+  source: 'gemini' | 'local_agent';
+}
+
+

@@ -45,6 +45,7 @@ export class ArenaScene {
   private bossFlashTimer = 0;
   private clockTime = 0;
   private currentCamX = 0;
+  private currentCamZ = 3.45;
   private currentCamRoll = 0;
   private resizeHandler: () => void;
   private updateOpponentAvatar?: () => void;
@@ -52,6 +53,14 @@ export class ArenaScene {
   private playerAvatar?: THREE.Group;
   private playerAvatarArms?: [THREE.Mesh, THREE.Mesh];
   private disposed = false;
+  private liveHugProgress = 0;
+  private hugCompleted = false;
+  private hugAnimation: {
+    progress: number;
+    duration: number;
+    embraceSparked: boolean;
+    onComplete?: () => void;
+  } | null = null;
 
   constructor(container: HTMLElement) {
     this.renderer = new THREE.WebGLRenderer({
@@ -118,6 +127,30 @@ export class ArenaScene {
       this.renderer.setSize(w, h);
     };
     window.addEventListener('resize', this.resizeHandler);
+  }
+
+  public setLiveHugProgress(progress: number): void {
+    this.liveHugProgress = Math.max(0, Math.min(1, progress));
+  }
+
+  public resetPostMatchScene(): void {
+    this.liveHugProgress = 0;
+    this.hugCompleted = false;
+    this.hugAnimation = null;
+  }
+
+  public playHugBackAnimation(onComplete?: () => void): void {
+    this.liveHugProgress = 1;
+    this.hugAnimation = {
+      progress: 0,
+      duration: 2.5,
+      embraceSparked: false,
+      onComplete,
+    };
+  }
+
+  public isPlayingHugAnimation(): boolean {
+    return this.hugAnimation !== null;
   }
 
   private setupLighting(): void {
@@ -540,15 +573,47 @@ export class ArenaScene {
         ? Math.sin(snapshot.playerPunchProgress * Math.PI) * -0.09
         : 0;
 
+    // Compute camera forward movement so the player visibly steps right up to Kai for a real hug
+    let targetCamZ = 3.45 + punchForwardKick;
+    let hugSwayX = 0;
+    let hugSwayRoll = 0;
+    let hugCamPitch = -0.05;
+
+    if (this.hugAnimation !== null) {
+      const hp = Math.min(1, this.hugAnimation.progress);
+      if (hp < 0.28) {
+        const approach = Math.sin((hp / 0.28) * Math.PI * 0.5);
+        targetCamZ = 3.45 - approach * 1.43; // Moves forward to z = 2.02
+      } else if (hp < 0.78) {
+        const wrapT = (hp - 0.28) / 0.5;
+        const embraceDepth = Math.sin(wrapT * Math.PI);
+        targetCamZ = 2.02 - embraceDepth * 0.1; // Chest-to-chest embrace at z = 1.92
+        hugSwayX = Math.sin(wrapT * Math.PI * 2.0) * 0.04;
+        hugSwayRoll = Math.sin(wrapT * Math.PI * 2.0) * 0.032;
+        hugCamPitch = -0.02 + embraceDepth * 0.04;
+      } else {
+        const settle = (hp - 0.78) / 0.22;
+        targetCamZ = 2.02 + settle * 0.52; // Friendly close conversation distance z = 2.54
+      }
+    } else if (this.hugCompleted) {
+      targetCamZ = 2.54;
+    } else if (this.liveHugProgress > 0.01) {
+      // As player starts crossing arms, glide visibly closer across the ring toward Kai!
+      targetCamZ = 3.45 - this.liveHugProgress * 1.15;
+    }
+
+    const camZLerp = 1 - Math.exp(-dt * 9.5);
+    this.currentCamZ += (targetCamZ - this.currentCamZ) * camZLerp;
+
     this.cameraRig.position.set(
-      this.currentCamX + shakeX,
+      this.currentCamX + hugSwayX + shakeX,
       1.68 + Math.abs(this.currentCamX) * -0.06 + shakeY,
-      3.45 + punchForwardKick
+      this.currentCamZ
     );
     this.camera.rotation.set(
-      -0.05,
-      this.currentCamX * -0.08,
-      this.currentCamRoll
+      hugCamPitch,
+      this.currentCamX * -0.08 - hugSwayX * 0.35,
+      this.currentCamRoll + hugSwayRoll
     );
 
     // Animate first-person cyber-brawler hands & forearms
@@ -630,41 +695,105 @@ export class ArenaScene {
     const punchLift = this.playerAvatarArms ? 0.08 : 0.18;
     const pitchChange = this.playerAvatarArms ? 0.28 : 0.48;
 
-    // Left Brawler Hand & Cyber-Forearm (Guard -> Corkscrew Pronated Punch)
-    this.playerLeftHand.group.position.set(
-      -0.38 + guardTighten + leanShift + idleSway + leftExtend * punchInward,
-      -0.31 + guardTighten + idleBob + leftExtend * punchLift,
-      -0.66 - leftExtend * punchReach
-    );
+    // First-person hug arms: open wide on approach, then wrap inward around Kai!
+    let hugOpen = 0;
+    let hugWrap = 0;
+    let postHugRelax = 0;
+    if (this.hugAnimation !== null) {
+      const hp = Math.min(1, this.hugAnimation.progress);
+      if (hp < 0.28) {
+        hugOpen = Math.sin((hp / 0.28) * Math.PI * 0.5);
+      } else if (hp < 0.78) {
+        const w = (hp - 0.28) / 0.5;
+        hugWrap = Math.sin(Math.min(1, w * 1.45) * Math.PI * 0.5);
+        hugOpen = 1 - hugWrap * 0.65;
+      } else {
+        const r = (hp - 0.78) / 0.22;
+        hugWrap = 1 - r;
+        postHugRelax = r;
+      }
+    } else if (this.hugCompleted) {
+      postHugRelax = 1;
+    } else if (this.liveHugProgress > 0.01) {
+      hugOpen = this.liveHugProgress * 0.85;
+      hugWrap = Math.max(0, this.liveHugProgress - 0.35) * 0.55;
+    }
+
+    const leftX =
+      -0.38 +
+      guardTighten +
+      leanShift +
+      idleSway +
+      leftExtend * punchInward -
+      hugOpen * 0.16 +
+      hugWrap * 0.24 -
+      postHugRelax * 0.06;
+    const leftY =
+      -0.31 +
+      guardTighten +
+      idleBob +
+      leftExtend * punchLift -
+      hugOpen * 0.04 +
+      hugWrap * 0.09 -
+      postHugRelax * 0.16;
+    const leftZ =
+      -0.66 -
+      leftExtend * punchReach -
+      hugOpen * 0.06 -
+      hugWrap * 0.16 +
+      postHugRelax * 0.06;
+
+    // Left Brawler Hand & Cyber-Forearm (Guard -> Punch OR Open/Wrap Hug)
+    this.playerLeftHand.group.position.set(leftX, leftY, leftZ);
     this.playerLeftHand.group.rotation.set(
-      0.56 - leftExtend * pitchChange,
-      -0.22 + leftExtend * 0.18,
-      1.06 * (1 - leftExtend * 0.92)
+      0.56 - leftExtend * pitchChange - hugOpen * 0.22 - hugWrap * 0.34 - postHugRelax * 0.2,
+      -0.22 + leftExtend * 0.18 + hugOpen * 0.24 - hugWrap * 0.48,
+      1.06 * (1 - leftExtend * 0.92) - hugOpen * 0.25 + hugWrap * 0.38
     );
     this.playerLeftHand.conduitMat.emissiveIntensity =
-      2.3 + pulse * 0.45 + leftExtend * 2.4;
+      2.3 + pulse * 0.45 + leftExtend * 2.4 + hugWrap * 1.6;
     this.playerLeftHand.knuckleStudMat.emissiveIntensity =
-      2.6 + pulse * 0.4 + leftExtend * 2.6;
+      2.6 + pulse * 0.4 + leftExtend * 2.6 + hugWrap * 1.6;
     this.playerLeftHand.honeycombMat.emissiveIntensity =
-      2.4 + pulse * 0.5 + leftExtend * 1.8;
+      2.4 + pulse * 0.5 + leftExtend * 1.8 + hugWrap * 1.4;
 
-    // Right Brawler Hand & Cyber-Forearm (Guard -> Corkscrew Pronated Punch)
-    this.playerRightHand.group.position.set(
-      0.38 - guardTighten + leanShift - idleSway - rightExtend * punchInward,
-      -0.31 + guardTighten - idleBob + rightExtend * punchLift,
-      -0.66 - rightExtend * punchReach
-    );
+    const rightX =
+      0.38 -
+      guardTighten +
+      leanShift -
+      idleSway -
+      rightExtend * punchInward +
+      hugOpen * 0.16 -
+      hugWrap * 0.24 +
+      postHugRelax * 0.06;
+    const rightY =
+      -0.31 +
+      guardTighten -
+      idleBob +
+      rightExtend * punchLift -
+      hugOpen * 0.04 +
+      hugWrap * 0.09 -
+      postHugRelax * 0.16;
+    const rightZ =
+      -0.66 -
+      rightExtend * punchReach -
+      hugOpen * 0.06 -
+      hugWrap * 0.16 +
+      postHugRelax * 0.06;
+
+    // Right Brawler Hand & Cyber-Forearm (Guard -> Punch OR Open/Wrap Hug)
+    this.playerRightHand.group.position.set(rightX, rightY, rightZ);
     this.playerRightHand.group.rotation.set(
-      0.56 - rightExtend * pitchChange,
-      0.22 - rightExtend * 0.18,
-      -1.06 * (1 - rightExtend * 0.92)
+      0.56 - rightExtend * pitchChange - hugOpen * 0.22 - hugWrap * 0.34 - postHugRelax * 0.2,
+      0.22 - rightExtend * 0.18 - hugOpen * 0.24 + hugWrap * 0.48,
+      -1.06 * (1 - rightExtend * 0.92) + hugOpen * 0.25 - hugWrap * 0.38
     );
     this.playerRightHand.conduitMat.emissiveIntensity =
-      2.3 + pulse * 0.45 + rightExtend * 2.4;
+      2.3 + pulse * 0.45 + rightExtend * 2.4 + hugWrap * 1.6;
     this.playerRightHand.knuckleStudMat.emissiveIntensity =
-      2.6 + pulse * 0.4 + rightExtend * 2.6;
+      2.6 + pulse * 0.4 + rightExtend * 2.6 + hugWrap * 1.6;
     this.playerRightHand.honeycombMat.emissiveIntensity =
-      2.4 + pulse * 0.5 + rightExtend * 1.8;
+      2.4 + pulse * 0.5 + rightExtend * 1.8 + hugWrap * 1.4;
   }
 
   private animateKaiBrawler(snapshot: CombatSnapshot, dt: number): void {
@@ -709,7 +838,121 @@ export class ArenaScene {
     let knuckleColor = 0xffa800;
     let conduitIntensity = 2.6 + Math.sin(t * 5.0) * 0.3;
 
-    switch (snapshot.bossState) {
+    if (this.hugAnimation !== null) {
+      this.hugAnimation.progress += dt / this.hugAnimation.duration;
+      const hp = Math.min(1, this.hugAnimation.progress);
+
+      // Warm golden-amber glow for mutual hug
+      conduitColor = 0xffb703;
+      knuckleColor = 0xffd166;
+      conduitIntensity = 3.8 + Math.sin(t * 8) * 0.45;
+
+      if (hp < 0.28) {
+        // Phase 1: Step forward to meet the player, arms opening wide
+        const ease = Math.sin((hp / 0.28) * Math.PI * 0.5);
+        kai.root.position.set(0, 0, BOSS_BASE_Z + ease * 0.54);
+        kai.pelvis.position.y = 0.95;
+        kai.pelvis.rotation.set(0, 0, 0);
+        kai.torso.rotation.set(-0.04 * ease, 0, 0);
+        kai.head.rotation.set(-0.04 * ease, 0, 0);
+
+        kai.screenLeftArm.shoulder.rotation.set(-0.92 * ease, -0.45 * ease, -0.78 * ease);
+        kai.screenLeftArm.elbow.rotation.set(-0.28 * ease, 0, 0);
+        kai.screenRightArm.shoulder.rotation.set(-0.92 * ease, 0.45 * ease, 0.78 * ease);
+        kai.screenRightArm.elbow.rotation.set(-0.28 * ease, 0, 0);
+      } else if (hp < 0.78) {
+        // Phase 2: Close chest-to-chest embrace — Kai wraps arms around player & sways warmly
+        if (!this.hugAnimation.embraceSparked) {
+          this.hugAnimation.embraceSparked = true;
+          this.spawnImpactBurst(
+            new THREE.Vector3(0, 1.65, BOSS_BASE_Z + 0.65),
+            0xffbe0b,
+            22
+          );
+        }
+        const wrapPhase = (hp - 0.28) / 0.5;
+        const wrapEase = Math.sin(Math.min(1, wrapPhase * 1.45) * Math.PI * 0.5);
+        const sway = Math.sin(wrapPhase * Math.PI * 2.0) * 0.05;
+
+        kai.root.position.set(sway * 0.4, 0, BOSS_BASE_Z + 0.56);
+        kai.pelvis.position.y = 0.94;
+        kai.pelvis.rotation.set(0, 0, 0);
+        kai.torso.rotation.set(0.14 * wrapEase, sway * 0.5, sway * 0.4);
+        kai.head.rotation.set(0.12 * wrapEase, 0.1 * wrapEase, 0.06 * wrapEase);
+
+        kai.screenLeftArm.shoulder.rotation.set(
+          -1.26,
+          -0.45 + 1.05 * wrapEase,
+          -0.78 + 1.15 * wrapEase
+        );
+        kai.screenLeftArm.elbow.rotation.set(-0.28 - 1.18 * wrapEase, 0, 0.26 * wrapEase);
+        kai.screenLeftArm.wrist.rotation.set(0, 0.45 * wrapEase, 0);
+
+        kai.screenRightArm.shoulder.rotation.set(
+          -1.26,
+          0.45 - 1.05 * wrapEase,
+          0.78 - 1.15 * wrapEase
+        );
+        kai.screenRightArm.elbow.rotation.set(-0.28 - 1.18 * wrapEase, 0, -0.26 * wrapEase);
+        kai.screenRightArm.wrist.rotation.set(0, -0.45 * wrapEase, 0);
+      } else {
+        // Phase 3: Settle into a friendly close-up standing pose facing the player
+        const rel = (hp - 0.78) / 0.22;
+        kai.root.position.set(0, 0, BOSS_BASE_Z + 0.56 - rel * 0.24);
+        kai.pelvis.position.y = 0.95;
+        kai.pelvis.rotation.set(0, 0, 0);
+        kai.torso.rotation.set(0.14 * (1 - rel), 0, 0);
+        kai.head.rotation.set(0.05 * (1 - rel), 0, 0);
+
+        kai.screenLeftArm.shoulder.rotation.set(-1.26 * (1 - rel) - 0.12 * rel, 0, -0.18 * rel);
+        kai.screenLeftArm.elbow.rotation.set(-1.46 * (1 - rel) - 0.28 * rel, 0, 0);
+        kai.screenRightArm.shoulder.rotation.set(-1.26 * (1 - rel) - 0.12 * rel, 0, 0.18 * rel);
+        kai.screenRightArm.elbow.rotation.set(-1.46 * (1 - rel) - 0.28 * rel, 0, 0);
+      }
+
+      if (hp >= 1) {
+        const cb = this.hugAnimation.onComplete;
+        this.hugAnimation = null;
+        this.hugCompleted = true;
+        cb?.();
+      }
+    } else if (this.hugCompleted) {
+      // Friendly post-hug showcase stance: Kai stands close & relaxed so player can admire his outfit
+      conduitColor = 0xffb703;
+      knuckleColor = 0xffd166;
+      conduitIntensity = 3.1 + Math.sin(t * 3.2) * 0.25;
+      const breathe = Math.sin(t * 2.2) * 0.015;
+      kai.root.position.set(Math.sin(t * 1.1) * 0.03, 0, BOSS_BASE_Z + 0.32);
+      kai.pelvis.position.set(0, 0.95 + breathe, 0);
+      kai.pelvis.rotation.set(0, 0.05, 0);
+      kai.torso.rotation.set(-0.02, Math.sin(t * 1.1) * 0.04, 0);
+      kai.head.rotation.set(-0.02, Math.sin(t * 0.9) * -0.04, 0);
+
+      kai.screenLeftArm.shoulder.rotation.set(-0.12 + breathe, -0.08, -0.22);
+      kai.screenLeftArm.elbow.rotation.set(-0.32, 0, 0.08);
+      kai.screenLeftArm.wrist.rotation.set(0, 0.15, 0);
+
+      kai.screenRightArm.shoulder.rotation.set(-0.12 + breathe, 0.08, 0.22);
+      kai.screenRightArm.elbow.rotation.set(-0.32, 0, -0.08);
+      kai.screenRightArm.wrist.rotation.set(0, -0.15, 0);
+    } else if (this.liveHugProgress > 0.02) {
+      // Real-time interactive response while player begins hugging!
+      const lp = this.liveHugProgress;
+      conduitColor = 0xffb703;
+      knuckleColor = 0xffd166;
+      conduitIntensity = 3.2 + lp * 0.8;
+      kai.root.position.set(0, 0, BOSS_BASE_Z + lp * 0.44);
+      kai.pelvis.position.set(0, 0.95, 0);
+      kai.pelvis.rotation.set(0, 0, 0);
+      kai.torso.rotation.set(-0.03 * lp, 0, 0);
+      kai.head.rotation.set(-0.02 * lp, 0, 0);
+
+      kai.screenLeftArm.shoulder.rotation.set(-0.88 * lp, -0.4 * lp, -0.72 * lp);
+      kai.screenLeftArm.elbow.rotation.set(-0.35, 0, 0);
+      kai.screenRightArm.shoulder.rotation.set(-0.88 * lp, 0.4 * lp, 0.72 * lp);
+      kai.screenRightArm.elbow.rotation.set(-0.35, 0, 0);
+    } else {
+      switch (snapshot.bossState) {
       case 'IDLE': {
         const sway = Math.sin(t * 1.85);
         kai.root.position.x = sway * 0.11;
@@ -911,6 +1154,7 @@ export class ArenaScene {
         break;
       }
     }
+  }
 
     kai.cyberConduitMat.color.setHex(conduitColor);
     kai.cyberConduitMat.emissive.setHex(conduitColor);

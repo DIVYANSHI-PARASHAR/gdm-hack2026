@@ -37,11 +37,15 @@ export interface GestureFrameResult {
     leftWrist: { x: number; y: number };
     rightWrist: { x: number; y: number };
   } | null;
+  hugHoldProgress: number; // 0..1 hold progress toward self-hug
+  hugTriggered: boolean;   // true once hold threshold is reached
 }
 
 const MIN_LANDMARK_CONFIDENCE = 0.45;
 const TRACKING_LOSS_HOLD_MS = 360;
 const CALIBRATION_REQUIRED_SAMPLES = 16;
+const HUG_HOLD_THRESHOLD_MS = 340;
+const HUG_CROSS_DISTANCE_RATIO = 0.78;
 
 const LEAN_ENTER_THRESHOLD = 0.26;
 const LEAN_EXIT_THRESHOLD = 0.14;
@@ -84,6 +88,14 @@ export class GestureRecognizer {
   private lowConfidenceSinceMs: number | null = null;
   private trackingLost = false;
 
+  private hugHoldAccumulatorMs = 0;
+  private hugFired = false;
+
+  public resetHugState(): void {
+    this.hugHoldAccumulatorMs = 0;
+    this.hugFired = false;
+  }
+
   public resetCalibration(): void {
     this.calibration = null;
     this.calibSamples = [];
@@ -92,6 +104,7 @@ export class GestureRecognizer {
     this.leftArmPhase = 'GUARD';
     this.rightArmPhase = 'GUARD';
     this.prevTimestampMs = null;
+    this.resetHugState();
   }
 
   public isCalibrated(): boolean {
@@ -123,22 +136,27 @@ export class GestureRecognizer {
     const lWrist = landmarks[15];
     const rWrist = landmarks[16];
 
-    const keyVisibility = [
+    const coreVisibility = [
       nose.visibility ?? 1,
       lShoulder.visibility ?? 1,
       rShoulder.visibility ?? 1,
+    ];
+    const keyVisibility = [
+      ...coreVisibility,
       lElbow.visibility ?? 1,
       rElbow.visibility ?? 1,
       lWrist.visibility ?? 1,
       rWrist.visibility ?? 1,
     ];
+    const coreConfidence =
+      coreVisibility.reduce((acc, v) => acc + v, 0) / coreVisibility.length;
     const avgConfidence =
       keyVisibility.reduce((acc, v) => acc + v, 0) / keyVisibility.length;
     const shouldersVisible =
-      (lShoulder.visibility ?? 1) >= MIN_LANDMARK_CONFIDENCE &&
-      (rShoulder.visibility ?? 1) >= MIN_LANDMARK_CONFIDENCE;
+      (lShoulder.visibility ?? 1) >= 0.38 &&
+      (rShoulder.visibility ?? 1) >= 0.38;
 
-    if (!shouldersVisible || avgConfidence < MIN_LANDMARK_CONFIDENCE) {
+    if (!shouldersVisible || coreConfidence < MIN_LANDMARK_CONFIDENCE) {
       return this.handleMissingPose(timestampMs, avgConfidence);
     }
 
@@ -175,10 +193,28 @@ export class GestureRecognizer {
     const leftExt = this.computeArmExtension(mLSh, mLEl, mLWr, -1, liveShoulderWidth);
     const rightExt = this.computeArmExtension(mRSh, mREl, mRWr, 1, liveShoulderWidth);
 
+    const dtMs =
+      this.prevTimestampMs !== null
+        ? Math.max(5, Math.min(250, timestampMs - this.prevTimestampMs))
+        : 33;
+
     // Handle calibration collection
     if (this.isCalibrating || !this.calibration) {
+      const uncalibHug = this.evaluateSelfHug(
+        mLSh,
+        mRSh,
+        mLEl,
+        mREl,
+        mLWr,
+        mRWr,
+        shoulderMidMx,
+        liveShoulderWidth,
+        dtMs
+      );
+
       // Ensure user is reasonably centered inside camera frame during calibration
-      if (upperBodyMx > 0.2 && upperBodyMx < 0.8) {
+      // (Don't sample crossed-arm poses as neutral boxing guard!)
+      if (upperBodyMx > 0.2 && upperBodyMx < 0.8 && uncalibHug.hugHoldProgress === 0) {
         this.calibSamples.push({
           centerMx: upperBodyMx,
           shoulderWidth: liveShoulderWidth,
@@ -193,6 +229,8 @@ export class GestureRecognizer {
         1,
         this.calibSamples.length / CALIBRATION_REQUIRED_SAMPLES
       );
+
+      this.prevTimestampMs = timestampMs;
 
       if (this.calibSamples.length >= CALIBRATION_REQUIRED_SAMPLES) {
         const n = this.calibSamples.length;
@@ -210,7 +248,6 @@ export class GestureRecognizer {
           neutralRightWristX: this.calibSamples.reduce((s, c) => s + c.rightWristX, 0) / n,
         };
         this.isCalibrating = false;
-        this.prevTimestampMs = timestampMs;
         this.prevLeftExt = leftExt;
         this.prevRightExt = rightExt;
         this.prevLeftWristRel = {
@@ -235,6 +272,8 @@ export class GestureRecognizer {
         leftExtDelta: 0,
         rightExtDelta: 0,
         mirroredKeypoints,
+        hugHoldProgress: uncalibHug.hugHoldProgress,
+        hugTriggered: uncalibHug.hugTriggered,
       };
     }
 
@@ -359,6 +398,18 @@ export class GestureRecognizer {
       }
     }
 
+    const { hugHoldProgress, hugTriggered } = this.evaluateSelfHug(
+      mLSh,
+      mRSh,
+      mLEl,
+      mREl,
+      mLWr,
+      mRWr,
+      shoulderMidMx,
+      liveShoulderWidth,
+      dtMs
+    );
+
     this.prevTimestampMs = timestampMs;
     this.prevLeftExt = leftExt;
     this.prevRightExt = rightExt;
@@ -378,6 +429,79 @@ export class GestureRecognizer {
       leftExtDelta,
       rightExtDelta,
       mirroredKeypoints,
+      hugHoldProgress,
+      hugTriggered,
+    };
+  }
+
+  private evaluateSelfHug(
+    mLSh: { x: number; y: number; z: number },
+    mRSh: { x: number; y: number; z: number },
+    mLEl: { x: number; y: number; z: number },
+    mREl: { x: number; y: number; z: number },
+    mLWr: { x: number; y: number; z: number },
+    mRWr: { x: number; y: number; z: number },
+    shoulderMidMx: number,
+    liveShoulderWidth: number,
+    dtMs: number
+  ): { hugHoldProgress: number; hugTriggered: boolean } {
+    // 1. Wrists crossed or overlapping across chest/ribs/opposite shoulders
+    const distLWrToRSh = Math.hypot(mLWr.x - mRSh.x, mLWr.y - mRSh.y) / liveShoulderWidth;
+    const distRWrToLSh = Math.hypot(mRWr.x - mLSh.x, mRWr.y - mLSh.y) / liveShoulderWidth;
+    const leftMovedInward = (mLWr.x - mLSh.x) / liveShoulderWidth >= 0.36;
+    const rightMovedInward = (mRSh.x - mRWr.x) / liveShoulderWidth >= 0.36;
+    const wristsCrossed =
+      (distLWrToRSh < HUG_CROSS_DISTANCE_RATIO &&
+        distRWrToLSh < HUG_CROSS_DISTANCE_RATIO &&
+        mLWr.x >= mRWr.x - 0.12 * liveShoulderWidth) ||
+      (leftMovedInward &&
+        rightMovedInward &&
+        mLWr.x >= mRWr.x - 0.1 * liveShoulderWidth);
+
+    // 2. Forearms folded horizontally across chest in opposite directions
+    // (Catches casual folded-arm hugs even when MediaPipe tucks a wrist behind the bicep!)
+    const leftForearmAcross =
+      (mLWr.x - mLEl.x) / liveShoulderWidth >= 0.35 &&
+      mLWr.x >= shoulderMidMx - 0.08 * liveShoulderWidth;
+    const rightForearmAcross =
+      (mREl.x - mRWr.x) / liveShoulderWidth >= 0.35 &&
+      mRWr.x <= shoulderMidMx + 0.08 * liveShoulderWidth;
+    const forearmsFoldedAcrossChest = leftForearmAcross && rightForearmAcross;
+
+    const topY = Math.min(mLSh.y, mRSh.y) - 0.45 * liveShoulderWidth;
+    const botY = Math.max(mLSh.y, mRSh.y) + 1.95 * liveShoulderWidth;
+    const wristsInUpperBodyBand =
+      mLWr.y >= topY && mLWr.y <= botY && mRWr.y >= topY && mRWr.y <= botY;
+
+    const isSelfHugPose =
+      (wristsCrossed || forearmsFoldedAcrossChest) && wristsInUpperBodyBand;
+
+    const steppingCloserBoost =
+      this.calibration &&
+      liveShoulderWidth > this.calibration.neutralShoulderWidth * 1.07
+        ? 1.25
+        : 1.0;
+
+    let hugTriggered = false;
+    if (isSelfHugPose) {
+      this.hugHoldAccumulatorMs += dtMs * steppingCloserBoost;
+      if (this.hugHoldAccumulatorMs >= HUG_HOLD_THRESHOLD_MS && !this.hugFired) {
+        hugTriggered = true;
+        this.hugFired = true;
+      }
+    } else {
+      this.hugHoldAccumulatorMs = Math.max(
+        0,
+        this.hugHoldAccumulatorMs - dtMs * 1.9
+      );
+    }
+
+    return {
+      hugHoldProgress: Math.min(
+        1,
+        this.hugHoldAccumulatorMs / HUG_HOLD_THRESHOLD_MS
+      ),
+      hugTriggered,
     };
   }
 
@@ -436,6 +560,11 @@ export class GestureRecognizer {
 
     this.currentLean = 'NONE';
     this.prevTimestampMs = null;
+    if (this.trackingLost) {
+      this.hugHoldAccumulatorMs = 0;
+    } else {
+      this.hugHoldAccumulatorMs = Math.max(0, this.hugHoldAccumulatorMs - 45);
+    }
 
     return {
       calibrated: this.isCalibrated(),
@@ -451,6 +580,8 @@ export class GestureRecognizer {
       leftExtDelta: 0,
       rightExtDelta: 0,
       mirroredKeypoints: null,
+      hugHoldProgress: Math.min(1, this.hugHoldAccumulatorMs / HUG_HOLD_THRESHOLD_MS),
+      hugTriggered: false,
     };
   }
 }

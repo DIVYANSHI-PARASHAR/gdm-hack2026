@@ -287,4 +287,52 @@ export class SoundEngine {
       osc.stop(t + 0.35);
     });
   }
+
+  public playHugChime(): void {
+    if (this.muted) return;
+    this.unlock();
+    if (!this.ctx || this.ctx.state !== 'running') return;
+    const now = this.ctx.currentTime;
+    const chord = [392.0, 493.88, 587.33, 783.99]; // Warm G major 7 chime
+    chord.forEach((freq, idx) => {
+      if (!this.ctx) return;
+      const t = now + idx * 0.08;
+      const osc = this.ctx.createOscillator();
+      osc.type = 'sine';
+      osc.frequency.setValueAtTime(freq, t);
+
+      const gain = this.ctx.createGain();
+      gain.gain.setValueAtTime(0.14, t);
+      gain.gain.exponentialRampToValueAtTime(0.0005, t + 0.6);
+
+      osc.connect(gain);
+      gain.connect(this.ctx.destination);
+      osc.start(t);
+      osc.stop(t + 0.6);
+    });
+  }
+
+  public playPurchaseChime(): void {
+    if (this.muted) return;
+    this.unlock();
+    if (!this.ctx || this.ctx.state !== 'running') return;
+    const now = this.ctx.currentTime;
+    const notes = [523.25, 659.25, 783.99, 1046.5]; // Crisp C5-E5-G5-C6 confirmation chime
+    notes.forEach((freq, idx) => {
+      if (!this.ctx) return;
+      const t = now + idx * 0.065;
+      const osc = this.ctx.createOscillator();
+      osc.type = 'triangle';
+      osc.frequency.setValueAtTime(freq, t);
+
+      const gain = this.ctx.createGain();
+      gain.gain.setValueAtTime(0.15, t);
+      gain.gain.exponentialRampToValueAtTime(0.0005, t + 0.45);
+
+      osc.connect(gain);
+      gain.connect(this.ctx.destination);
+      osc.start(t);
+      osc.stop(t + 0.45);
+    });
+  }
 }

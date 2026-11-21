@@ -117,3 +117,41 @@ cp .env.example .env
   - Displays **Synced total calories** (which includes basal resting burn + active expenditure per Google Health `total-calories` semantics).
   - Shows **Awaiting sync** with a **Retry Sync** button if your Fitbit Air has not yet finished syncing the full match window to Google Health, or **Unavailable** if intervals cannot be isolated reliably.
   - OAuth tokens stay strictly server-side (`HttpOnly` session) and health data is never logged or sent to Gemini.
+
+---
+
+## Post-Match "Shop the Look" & Agentic Commerce (Shopify + Gemini 4 Neon)
+
+Extend the post-match experience into an end-to-end commerce flow: **Fight the robot → Hug it after the match → See the jacket it’s wearing → Ask for it in your size → Open a real Shopify checkout**.
+
+### 1. The Post-Match Hug & Visual Product Link
+- **Visual Asset Link**: Kai the Brawler wears the real **Shopify Puffer Jacket** (`gid://shopify/Product/7983594340374`, vendor **Mock.shop**). The Three.js model in `src/scene/KaiBrawlerModel.ts` is visually rendered with tactical Olive quilted down baffles, horizontal baffle stitching seams, segmented chest plates, and collar zipper pull matching the turnaround asset (`public/assets/opponent.jpg`).
+- **Effortless Self-Hug Detection (`src/vision/gestureRecognizer.ts`)**:
+  - Preserves your calibrated webcam session at match end (no forced recalibration) and detects any natural self-hug across the shoulders, chest, or ribs in **340 ms** (~10 frames), even when wrists partially tuck/occlude around your upper arms.
+  - **Guard Immunity**: Verified in `tests/hugGesture.test.ts` that holding a boxing guard or throwing punches **never** triggers the hug.
+  - **Keyboard & Click Fallback**: Press **`H`** or click **"Hug Kai & View Outfit 🫂"** on the left-docked prompt card anytime on the result screen.
+- **First-Person 3D Approach & Mutual Hug (`src/scene/ArenaScene.ts`)**:
+  - As soon as you start crossing your arms, the **first-person camera glides forward across the ring toward Kai** while Kai lowers his guard and opens his arms wide to meet you.
+  - When the hug triggers, you step right up chest-to-chest: **both your first-person arms and Kai's arms wrap around each other** in a warm embrace with golden rim lighting, celebration sparks, gentle embrace sway, and a warm G-major 7 chime (`playHugChime()`), settling afterward into a friendly close-up stance so you can admire his outfit.
+
+### 2. Left-Docked Outfit Dialog & Instant 1-Click Shopify Purchase
+- **Separated from Game State**:
+  - Match stats, Heart Rate, and Synced Calories stay cleanly in the **right** result panel (`#screen-result`), while **Kai's Arena Outfit** opens in its own dedicated **left** dialog (`#outfit-dock`) so the 3D arena center stays clear.
+- **Direct "Buy Now?" Prompt & Connected Shopify Purchase (`POST /api/shop/purchase`)**:
+  - On the hug, the left dialog immediately shows the live Shopify jacket details (image, merchant, `$90.00 CAD`, size & color pills) and asks: **"Would you like to buy Kai's outfit?"** (**Yes, Buy It Now** / **No, Thanks**).
+  - Clicking **Yes, Buy It Now** executes a 1-click purchase using the connected Shopify buyer profile (`Account ⚙` in the dialog or `SHOPIFY_BUYER_*` / `SHOPIFY_STORE_DOMAIN` / `SHOPIFY_ADMIN_TOKEN` in `.env`), displaying an instant **Shopify Order Confirmed** receipt card (`#SP-...`) with a link to view on Shopify.
+- **Gemini 4 Neon Shopping Agent (`server/geminiShopping.ts`)**:
+  - Expand **"Ask Gemini 4 Neon about sizes or colors"** inside the left dialog to ask natural-language inventory questions (e.g., *"Do you have this in black, medium?"*, *"I'll take Kai's Olive in Medium"*, or *"yes buy it"*).
+- **Strict Privacy Separation**:
+  - Webcam video frames, pose landmarks, and Fitbit/health data are strictly forbidden from entering commerce endpoints (`sanitizeShoppingInput`).
+
+### 3. Verification & Demo Walkthrough
+Run the automated test suite verifying all state machine, gesture, and commerce requirements:
+```bash
+npm test
+```
+The test suite verifies:
+1. `tests/hugGesture.test.ts`: Holding a boxing guard never triggers a hug; throwing punches never triggers a hug; holding a self-hug triggers hug after 650 ms; releasing early resets hold progress.
+2. `tests/shopifyCommerce.test.ts`: Live/fallback product metadata lookup; exact variant matching for Olive Medium; honest handling of unavailable color (Black) and size (XL) with alternative suggestions; ambiguous color clarification; cart creation with hosted checkout URL; rejection of biometric or video payloads.
+3. `tests/combatEngine.test.ts` & `tests/gestureRecognizer.test.ts`: Full combat loops, leans, punches, and state machine integrity.
+

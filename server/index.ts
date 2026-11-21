@@ -9,6 +9,11 @@ import {
   sanitizeExchangeSummary,
 } from './geminiDecisions';
 import {
+  GeminiShoppingAgent,
+  GEMINI_SHOPPING_MODEL,
+  sanitizeShoppingInput,
+} from './geminiShopping';
+import {
   clearHealthSession,
   createOAuthAuthorizationUrl,
   fetchSyncedMatchCalories,
@@ -16,6 +21,11 @@ import {
   hasConnectedHealthSession,
   isGoogleHealthConfigured,
 } from './googleHealth';
+import {
+  DEFAULT_SHOPIFY_PRODUCT_ID,
+  DEFAULT_SHOPIFY_STORE_DOMAIN,
+  ShopifyMcpService,
+} from './shopifyMcp';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const ROOT_DIR = path.resolve(__dirname, '..');
@@ -168,6 +178,122 @@ export function createApiApp(port: number = 5173): express.Express {
     res.json(response);
   });
 
+  // --- Shopify & Agentic Commerce Endpoints ---
+  const shopifyMcp = new ShopifyMcpService();
+  const shoppingAgent = new GeminiShoppingAgent({ mcpService: shopifyMcp });
+
+  app.get('/api/shop/status', (_req, res) => {
+    const profile = shopifyMcp.getBuyerProfile();
+    res.json({
+      geminiConfigured: isConfiguredSecret(process.env.GEMINI_API_KEY),
+      shoppingModel: GEMINI_SHOPPING_MODEL,
+      storeDomain: profile.storeDomain,
+      productId: DEFAULT_SHOPIFY_PRODUCT_ID,
+      buyerProfile: profile,
+    });
+  });
+
+  app.get('/api/shop/similar', async (_req, res) => {
+    const similar = await shoppingAgent.findSimilarProducts();
+    res.json(similar);
+  });
+
+  app.get('/api/shop/product', async (req, res) => {
+    const productId =
+      typeof req.query.productId === 'string' && req.query.productId.startsWith('gid://shopify/Product/')
+        ? req.query.productId
+        : DEFAULT_SHOPIFY_PRODUCT_ID;
+    const result = await shopifyMcp.getProductDetails(productId);
+    res.json({
+      ...result,
+      buyerProfile: shopifyMcp.getBuyerProfile(),
+    });
+  });
+
+  app.post('/api/shop/connect', (req, res) => {
+    const body = (req.body ?? {}) as Record<string, unknown>;
+    if ('bpm' in body || 'heartRate' in body || 'landmarks' in body || 'image' in body) {
+      res.status(400).json({ error: 'Biometric or camera fields are forbidden.' });
+      return;
+    }
+    const updated = shopifyMcp.updateConnection({
+      storeDomain: typeof body.storeDomain === 'string' ? body.storeDomain : undefined,
+      name: typeof body.name === 'string' ? body.name : undefined,
+      email: typeof body.email === 'string' ? body.email : undefined,
+      shippingAddress: typeof body.shippingAddress === 'string' ? body.shippingAddress : undefined,
+    });
+    res.json({ ok: true, buyerProfile: updated });
+  });
+
+  app.post('/api/shop/purchase', async (req, res) => {
+    const body = (req.body ?? {}) as Record<string, unknown>;
+    if ('bpm' in body || 'heartRate' in body || 'landmarks' in body || 'image' in body) {
+      res.status(400).json({ error: 'Biometric or camera fields are forbidden.' });
+      return;
+    }
+    const variantId = typeof body.variantId === 'string' ? body.variantId : '';
+    const quantity = Math.max(1, Math.min(10, Number(body.quantity) || 1));
+    const productId =
+      typeof body.productId === 'string' && body.productId.startsWith('gid://shopify/Product/')
+        ? body.productId
+        : DEFAULT_SHOPIFY_PRODUCT_ID;
+
+    if (!variantId) {
+      res.status(400).json({ error: 'variantId is required' });
+      return;
+    }
+
+    const receipt = await shopifyMcp.purchaseVariant(variantId, quantity, productId);
+    res.json(receipt);
+  });
+
+  app.post('/api/shop/chat', async (req, res) => {
+    const sanitized = sanitizeShoppingInput(req.body);
+    if (!sanitized) {
+      res.status(400).json({
+        error:
+          'Invalid commerce query payload. Sensitive biometric/telemetry fields are not permitted.',
+      });
+      return;
+    }
+    const response = await shoppingAgent.handleMessage(sanitized);
+    res.json(response);
+  });
+
+  app.post('/api/shop/variant', async (req, res) => {
+    const body = (req.body ?? {}) as {
+      productId?: unknown;
+      size?: unknown;
+      color?: unknown;
+    };
+    const productId =
+      typeof body.productId === 'string' && body.productId.startsWith('gid://shopify/Product/')
+        ? body.productId
+        : DEFAULT_SHOPIFY_PRODUCT_ID;
+    const size = typeof body.size === 'string' ? body.size : undefined;
+    const color = typeof body.color === 'string' ? body.color : undefined;
+
+    const result = await shopifyMcp.checkVariantAvailability(productId, size, color);
+    res.json(result);
+  });
+
+  app.post('/api/shop/cart', async (req, res) => {
+    const body = (req.body ?? {}) as {
+      variantId?: unknown;
+      quantity?: unknown;
+    };
+    const variantId = typeof body.variantId === 'string' ? body.variantId : '';
+    const quantity = Math.max(1, Math.min(10, Number(body.quantity) || 1));
+
+    if (!variantId) {
+      res.status(400).json({ error: 'variantId is required' });
+      return;
+    }
+
+    const cart = await shopifyMcp.createOrUpdateCart(variantId, quantity);
+    res.json(cart);
+  });
+
   return app;
 }
 
@@ -239,6 +365,16 @@ async function startServer(): Promise<void> {
         isGoogleHealthConfigured()
           ? 'Configured'
           : 'Optional / unconfigured (add GOOGLE_CLIENT_ID to .env)'
+      }`
+    );
+    console.log(
+      `  -> Shopify Agentic Commerce (Shop the Look): Live MCP (${DEFAULT_SHOPIFY_STORE_DOMAIN})`
+    );
+    console.log(
+      `  -> Gemini Shopping Agent (${GEMINI_SHOPPING_MODEL}): ${
+        isConfiguredSecret(process.env.GEMINI_API_KEY)
+          ? 'Configured'
+          : 'Local agentic resolver fallback (no GEMINI_API_KEY)'
       }\n`
     );
   });
