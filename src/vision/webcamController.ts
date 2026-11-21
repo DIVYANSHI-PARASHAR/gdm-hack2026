@@ -53,6 +53,8 @@ export class WebcamController {
   private state: WebcamState = 'off';
   private executionMode: VisionTelemetry['executionMode'] = 'none';
   private running = false;
+  private sessionId = 0;
+  private startPromise: Promise<boolean> | null = null;
   private frameInFlight = false;
   private lastVideoTime = -1;
 
@@ -89,7 +91,21 @@ export class WebcamController {
 
   public async start(): Promise<boolean> {
     if (this.running) return true;
+    if (this.startPromise) return this.startPromise;
 
+    const session = ++this.sessionId;
+    const promise = this.startInternal(session);
+    this.startPromise = promise;
+    try {
+      return await promise;
+    } finally {
+      if (this.startPromise === promise) {
+        this.startPromise = null;
+      }
+    }
+  }
+
+  private async startInternal(session: number): Promise<boolean> {
     if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
       this.setState(
         'no_camera',
@@ -101,9 +117,10 @@ export class WebcamController {
     this.setState('starting');
     this.recognizer.resetCalibration();
 
+    let acquiredStream: MediaStream | null = null;
     try {
       try {
-        this.stream = await navigator.mediaDevices.getUserMedia({
+        acquiredStream = await navigator.mediaDevices.getUserMedia({
           video: {
             width: { ideal: 640 },
             height: { ideal: 480 },
@@ -118,7 +135,7 @@ export class WebcamController {
           firstDom?.name === 'OverconstrainedError' ||
           firstDom?.name === 'ConstraintNotSatisfiedError'
         ) {
-          this.stream = await navigator.mediaDevices.getUserMedia({
+          acquiredStream = await navigator.mediaDevices.getUserMedia({
             video: true,
             audio: false,
           });
@@ -127,6 +144,7 @@ export class WebcamController {
         }
       }
     } catch (err) {
+      if (session !== this.sessionId) return false;
       const domErr = err as DOMException;
       if (
         domErr?.name === 'NotAllowedError' ||
@@ -153,6 +171,14 @@ export class WebcamController {
       return false;
     }
 
+    if (session !== this.sessionId) {
+      for (const track of acquiredStream.getTracks()) {
+        track.stop();
+      }
+      return false;
+    }
+
+    this.stream = acquiredStream;
     this.video.srcObject = this.stream;
     try {
       await this.video.play();
@@ -160,7 +186,18 @@ export class WebcamController {
       // Ignore play race if interrupted
     }
 
+    if (session !== this.sessionId) {
+      this.stopTracks();
+      return false;
+    }
+
     const engineReady = await this.initPoseEngine();
+    if (session !== this.sessionId) {
+      this.stopTracks();
+      this.cleanupPoseEngines();
+      return false;
+    }
+
     if (!engineReady) {
       this.stopTracks();
       this.setState(
@@ -185,10 +222,26 @@ export class WebcamController {
   }
 
   public stop(): void {
+    this.sessionId += 1;
+    this.startPromise = null;
     this.running = false;
     this.frameInFlight = false;
     this.stopTracks();
+    this.cleanupPoseEngines();
 
+    this.executionMode = 'none';
+    this.cameraFps = 0;
+    this.lastRecognizedGesture = 'NONE';
+    this.setState('off');
+    this.previewCtx.clearRect(
+      0,
+      0,
+      this.previewCanvas.width,
+      this.previewCanvas.height
+    );
+  }
+
+  private cleanupPoseEngines(): void {
     if (this.worker) {
       try {
         this.worker.postMessage({ type: 'STOP' });
@@ -203,16 +256,6 @@ export class WebcamController {
       this.fallbackLandmarker.close();
       this.fallbackLandmarker = null;
     }
-
-    this.executionMode = 'none';
-    this.cameraFps = 0;
-    this.setState('off');
-    this.previewCtx.clearRect(
-      0,
-      0,
-      this.previewCanvas.width,
-      this.previewCanvas.height
-    );
   }
 
   public dispose(): void {

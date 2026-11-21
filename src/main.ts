@@ -76,7 +76,10 @@ class IronPulseApp {
         if (
           this.pendingStartAfterCalibration &&
           gesture.calibrated &&
-          (snap.phase === 'READY' || snap.phase === 'CALIBRATING')
+          (snap.phase === 'READY' ||
+            snap.phase === 'CALIBRATING' ||
+            snap.phase === 'VICTORY' ||
+            snap.phase === 'DEFEAT')
         ) {
           this.pendingStartAfterCalibration = false;
           this.beginFight();
@@ -142,9 +145,9 @@ class IronPulseApp {
 
     el<HTMLButtonElement>('btn-skip-to-keyboard').addEventListener('click', () => {
       this.pendingStartAfterCalibration = false;
-      this.webcam.stop();
       this.controlMode = 'keyboard';
       this.updateControlModeBadge();
+      this.webcam.stop();
       this.beginFight();
     });
 
@@ -155,9 +158,9 @@ class IronPulseApp {
         const shouldStartMatch = this.combat.getSnapshot().phase === 'READY';
         void this.activateWebcamAndStart(shouldStartMatch);
       } else {
-        this.webcam.stop();
         this.controlMode = 'keyboard';
         this.updateControlModeBadge();
+        this.webcam.stop();
         if (this.combat.getSnapshot().phase === 'PAUSED_TRACKING') {
           this.combat.resumeFromTrackingLoss();
         }
@@ -174,23 +177,15 @@ class IronPulseApp {
     });
 
     el<HTMLButtonElement>('btn-pause-use-keyboard').addEventListener('click', () => {
-      this.webcam.stop();
       this.controlMode = 'keyboard';
       this.updateControlModeBadge();
+      this.webcam.stop();
       this.combat.resumeFromTrackingLoss();
       this.syncModalVisibility();
     });
 
     el<HTMLButtonElement>('btn-rematch').addEventListener('click', () => {
-      this.sound.unlock();
-      if (
-        this.controlMode === 'webcam' &&
-        this.webcam.getTelemetry().state !== 'active'
-      ) {
-        void this.activateWebcamAndStart(true);
-      } else {
-        this.beginFight();
-      }
+      this.triggerRematch();
     });
 
     // Debug & Mute toggles
@@ -284,7 +279,7 @@ class IronPulseApp {
         } else if (snap.phase === 'PAUSED_TRACKING') {
           this.resumeFromTrackingPause();
         } else if (snap.phase === 'VICTORY' || snap.phase === 'DEFEAT') {
-          this.beginFight();
+          this.triggerRematch();
         }
         return;
       }
@@ -339,9 +334,22 @@ class IronPulseApp {
     }
   }
 
+  private triggerRematch(): void {
+    this.sound.unlock();
+    if (
+      this.controlMode === 'webcam' &&
+      this.webcam.getTelemetry().state !== 'active'
+    ) {
+      void this.activateWebcamAndStart(true);
+    } else {
+      this.beginFight();
+    }
+  }
+
   private async activateWebcamAndStart(startMatchWhenCalibrated: boolean): Promise<void> {
     this.pendingStartAfterCalibration = startMatchWhenCalibrated;
     if (startMatchWhenCalibrated) {
+      el<HTMLDivElement>('calib-bar-fill').style.width = '0%';
       this.combat.setCalibrating();
     }
     this.controlMode = 'webcam';
@@ -355,10 +363,8 @@ class IronPulseApp {
       this.updateControlModeBadge();
       // Return to start modal if we hadn't started fighting yet
       if (this.combat.getSnapshot().phase === 'CALIBRATING') {
-        // Show start screen with keyboard fallback ready
-        el<HTMLDivElement>('screen-calibrating').classList.add('hidden');
-        el<HTMLDivElement>('screen-start').classList.remove('hidden');
-        el<HTMLDivElement>('modal-backdrop').classList.remove('hidden');
+        this.combat.cancelCalibration();
+        this.syncModalVisibility();
       }
     }
   }
@@ -384,7 +390,10 @@ class IronPulseApp {
 
     switch (state) {
       case 'off':
-        camStatus.textContent = 'Keyboard mode active';
+        camStatus.textContent =
+          this.controlMode === 'webcam'
+            ? 'Camera stopped — turns on at Rematch'
+            : 'Keyboard mode active';
         break;
       case 'starting':
         camStatus.textContent = 'Starting camera & on-device model...';
@@ -525,10 +534,25 @@ class IronPulseApp {
   }
 
   private onMatchFinished(victory: boolean): void {
+    this.pendingStartAfterCalibration = false;
+    const camState = this.webcam.getTelemetry().state;
+    if (
+      camState === 'starting' ||
+      camState === 'calibrating' ||
+      camState === 'active' ||
+      camState === 'tracking_lost'
+    ) {
+      this.webcam.stop();
+    }
+
     const snap = this.combat.getSnapshot();
     this.completedMatchStartMs = snap.matchStartWallMs;
     this.completedMatchEndMs = snap.matchEndWallMs ?? Date.now();
     const hrSummary = this.hrManager.endMatchRecording();
+
+    const resultPanel = el<HTMLElement>('screen-result');
+    resultPanel.classList.toggle('victory', victory);
+    resultPanel.classList.toggle('defeat', !victory);
 
     el<HTMLDivElement>('result-eyebrow').textContent = victory
       ? 'CHALLENGER TRIUMPHANT'
@@ -722,7 +746,7 @@ class IronPulseApp {
     const startCard = el<HTMLDivElement>('screen-start');
     const calibCard = el<HTMLDivElement>('screen-calibrating');
     const pausedCard = el<HTMLDivElement>('screen-paused');
-    const resultCard = el<HTMLDivElement>('screen-result');
+    const resultCard = el<HTMLElement>('screen-result');
 
     startCard.classList.add('hidden');
     calibCard.classList.add('hidden');
@@ -743,7 +767,7 @@ class IronPulseApp {
       backdrop.classList.remove('hidden');
       pausedCard.classList.remove('hidden');
     } else if (snap.phase === 'VICTORY' || snap.phase === 'DEFEAT') {
-      backdrop.classList.remove('hidden');
+      backdrop.classList.add('hidden');
       resultCard.classList.remove('hidden');
     } else {
       backdrop.classList.add('hidden');

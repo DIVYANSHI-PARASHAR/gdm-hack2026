@@ -209,8 +209,18 @@ export class CombatEngine {
   }
 
   public setCalibrating(): void {
-    if (this.phase === 'READY') {
+    if (
+      this.phase === 'READY' ||
+      this.phase === 'VICTORY' ||
+      this.phase === 'DEFEAT'
+    ) {
       this.phase = 'CALIBRATING';
+    }
+  }
+
+  public cancelCalibration(): void {
+    if (this.phase === 'CALIBRATING') {
+      this.phase = 'READY';
     }
   }
 

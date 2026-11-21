@@ -154,7 +154,85 @@
         </section>
       </footer>
 
-      <!-- Modal Overlay: Start / Calibration / Tracking Lost / Match Results -->
+      <!-- Non-blocking Match Result Panel (Docked Right) -->
+      <aside id="screen-result" class="result-panel hidden" aria-label="Match Results">
+        <div id="result-eyebrow" class="eyebrow">MATCH COMPLETE</div>
+        <h2 id="result-title" class="result-heading">KNOCKOUT VICTORY</h2>
+        <p id="result-subtitle" class="subtitle result-subtitle">
+          KRONOS-V reactor core neutralized!
+        </p>
+
+        <div class="stats-grid">
+          <div class="stat-tile">
+            <span class="stat-label">Match Time</span>
+            <strong id="res-duration" class="stat-val">00:00</strong>
+          </div>
+          <div class="stat-tile">
+            <span class="stat-label">Punches Landed</span>
+            <strong id="res-punches" class="stat-val">0 / 0</strong>
+          </div>
+          <div class="stat-tile">
+            <span class="stat-label">Counter Hits</span>
+            <strong id="res-counters" class="stat-val">0</strong>
+          </div>
+          <div class="stat-tile">
+            <span class="stat-label">Strikes Dodged</span>
+            <strong id="res-dodges" class="stat-val">0</strong>
+          </div>
+        </div>
+
+        <!-- Separate Fitness Cards: Live BLE/Demo BPM vs Post-Match Google Health Synced Total Calories -->
+        <div class="fitness-panels">
+          <div class="fitness-box">
+            <div class="fitness-box-header">
+              <span>Match Heart Rate</span>
+              <span id="res-hr-demo-tag" class="demo-tag hidden">Demo data</span>
+            </div>
+            <div id="res-hr-metrics" class="hr-summary-row">
+              <div>
+                <small>Average BPM</small>
+                <strong id="res-avg-bpm">--</strong>
+              </div>
+              <div>
+                <small>Peak BPM</small>
+                <strong id="res-peak-bpm">--</strong>
+              </div>
+            </div>
+            <p id="res-hr-note" class="fitness-note">
+              Connect Fitbit Air or Demo HR before a match to record BPM.
+            </p>
+          </div>
+
+          <div class="fitness-box">
+            <div class="fitness-box-header">
+              <span>Synced total calories</span>
+              <span id="res-cal-badge" class="pill pill-muted">Optional</span>
+            </div>
+            <div class="cal-value-row">
+              <strong id="res-cal-value" class="cal-main-val">Unavailable</strong>
+            </div>
+            <p id="res-cal-note" class="fitness-note">
+              Fetched via Google Health API (<code>total-calories</code>, includes resting burn).
+            </p>
+            <div class="cal-actions">
+              <button id="btn-connect-ghealth" class="btn btn-sm btn-outline-cyan hidden">
+                Connect Google Health
+              </button>
+              <button id="btn-retry-calories" class="btn btn-sm btn-ghost hidden">
+                Retry Sync
+              </button>
+            </div>
+          </div>
+        </div>
+
+        <div class="result-actions">
+          <button id="btn-rematch" class="btn btn-lg btn-primary btn-rematch-full">
+            Rematch (Space)
+          </button>
+        </div>
+      </aside>
+
+      <!-- Modal Overlay: Start / Calibration / Tracking Lost -->
       <div id="modal-backdrop" class="modal-backdrop">
         <!-- 1. Title / Start Screen -->
         <div id="screen-start" class="modal-card">
@@ -215,84 +293,6 @@
             </button>
             <button id="btn-pause-use-keyboard" class="btn btn-secondary">
               Continue with Keyboard
-            </button>
-          </div>
-        </div>
-
-        <!-- 4. Match Result Screen (Win / Loss + Live BPM Stats + Synced Total Calories + Replay) -->
-        <div id="screen-result" class="modal-card result-card hidden">
-          <div id="result-eyebrow" class="eyebrow">MATCH COMPLETE</div>
-          <h2 id="result-title" class="result-heading">KNOCKOUT VICTORY</h2>
-          <p id="result-subtitle" class="subtitle">
-            KRONOS-V reactor core neutralized!
-          </p>
-
-          <div class="stats-grid">
-            <div class="stat-tile">
-              <span class="stat-label">Match Time</span>
-              <strong id="res-duration" class="stat-val">00:00</strong>
-            </div>
-            <div class="stat-tile">
-              <span class="stat-label">Punches Landed</span>
-              <strong id="res-punches" class="stat-val">0 / 0</strong>
-            </div>
-            <div class="stat-tile">
-              <span class="stat-label">Counter Hits</span>
-              <strong id="res-counters" class="stat-val">0</strong>
-            </div>
-            <div class="stat-tile">
-              <span class="stat-label">Strikes Dodged</span>
-              <strong id="res-dodges" class="stat-val">0</strong>
-            </div>
-          </div>
-
-          <!-- Separate Fitness Cards: Live BLE/Demo BPM vs Post-Match Google Health Synced Total Calories -->
-          <div class="fitness-panels">
-            <div class="fitness-box">
-              <div class="fitness-box-header">
-                <span>Match Heart Rate</span>
-                <span id="res-hr-demo-tag" class="demo-tag hidden">Demo data</span>
-              </div>
-              <div id="res-hr-metrics" class="hr-summary-row">
-                <div>
-                  <small>Average BPM</small>
-                  <strong id="res-avg-bpm">--</strong>
-                </div>
-                <div>
-                  <small>Peak BPM</small>
-                  <strong id="res-peak-bpm">--</strong>
-                </div>
-              </div>
-              <p id="res-hr-note" class="fitness-note">
-                Connect Fitbit Air or Demo HR before a match to record BPM.
-              </p>
-            </div>
-
-            <div class="fitness-box">
-              <div class="fitness-box-header">
-                <span>Synced total calories</span>
-                <span id="res-cal-badge" class="pill pill-muted">Optional</span>
-              </div>
-              <div class="cal-value-row">
-                <strong id="res-cal-value" class="cal-main-val">Unavailable</strong>
-              </div>
-              <p id="res-cal-note" class="fitness-note">
-                Fetched via Google Health API (<code>total-calories</code>, includes resting burn).
-              </p>
-              <div class="cal-actions">
-                <button id="btn-connect-ghealth" class="btn btn-sm btn-outline-cyan hidden">
-                  Connect Google Health
-                </button>
-                <button id="btn-retry-calories" class="btn btn-sm btn-ghost hidden">
-                  Retry Sync
-                </button>
-              </div>
-            </div>
-          </div>
-
-          <div class="start-actions">
-            <button id="btn-rematch" class="btn btn-lg btn-primary">
-              Rematch (Space)
             </button>
           </div>
         </div>

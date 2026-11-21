@@ -162,4 +162,23 @@ describe('CombatEngine state machine', () => {
     expect(wrongMatch).toBe(false);
     expect(engine.getSnapshot().staleResponsesDiscarded).toBe(2);
   });
+
+  it('allows entering CALIBRATING from DEFEAT/VICTORY when restarting webcam on rematch', () => {
+    const engine = new CombatEngine({ rng: () => 0.1 });
+    engine.startMatch(1000);
+
+    // Step until player is defeated
+    for (let i = 0; i < 400 && engine.getSnapshot().phase === 'FIGHTING'; i++) {
+      engine.update(100);
+    }
+    expect(engine.getSnapshot().phase).toBe('DEFEAT');
+
+    // Rematch with webcam enters CALIBRATING cleanly
+    engine.setCalibrating();
+    expect(engine.getSnapshot().phase).toBe('CALIBRATING');
+
+    // Canceling calibration (e.g. camera unavailable) falls back cleanly to READY
+    engine.cancelCalibration();
+    expect(engine.getSnapshot().phase).toBe('READY');
+  });
 });
