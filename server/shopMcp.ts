@@ -1,3 +1,4 @@
+import type { JacketShipping } from '../src/shared/jacketShipping';
 import { jacketSize } from '../src/shared/jacketSizes';
 import { randomUUID } from 'node:crypto';
 
@@ -111,7 +112,7 @@ export class ShopMcp {
     };
   }
 
-  async checkout(id: string, selected: Selection[], idempotencyKey: string = randomUUID()): Promise<Checkout> {
+  async checkout(id: string, selected: Selection[], idempotencyKey: string = randomUUID(), shipping?: JacketShipping): Promise<Checkout> {
     const { product } = await this.call<{ product: ShopProduct }>('get_product', {
       catalog: { id, selected, context },
     });
@@ -123,9 +124,28 @@ export class ShopMcp {
       )));
     if (!variant) throw new RangeError('Choose available options for this jacket before checkout.');
 
+    const destination = shipping && {
+      id: 'buyer-shipping',
+      first_name: shipping.first_name,
+      last_name: shipping.last_name,
+      street_address: shipping.street_address,
+      address_locality: shipping.address_locality,
+      address_region: shipping.address_region,
+      postal_code: shipping.postal_code,
+      address_country: shipping.address_country,
+    };
     const checkout = await this.call<Checkout>('create_checkout', {
       shop: variant.seller.domain,
-      checkout: { line_items: [{ item: { id: variant.id }, quantity: 1 }], context },
+      checkout: {
+        line_items: [{ item: { id: variant.id }, quantity: 1 }],
+        context: destination ? { address_country: destination.address_country } : context,
+        ...(shipping && destination && {
+          buyer: { email: shipping.email, first_name: shipping.first_name, last_name: shipping.last_name },
+          fulfillment: { methods: [{
+            type: 'shipping', destinations: [destination], selected_destination_id: destination.id,
+          }] },
+        }),
+      },
       meta: { 'idempotency-key': idempotencyKey },
     });
     if (!httpsUrl(checkout.continue_url)) throw new Error('The merchant did not return a checkout link.');

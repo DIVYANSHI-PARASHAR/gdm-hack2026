@@ -1,3 +1,4 @@
+import { readJacketShipping } from '../src/shared/jacketShipping';
 import type { Express } from 'express';
 import { jacketVoiceSetup } from '../src/shared/jacketVoiceSetup';
 import { isConfiguredSecret } from './env';
@@ -28,7 +29,12 @@ export function registerJacketShoppingRoutes(app: Express, shop = new ShopMcp())
   });
 
   app.post('/api/jacket/checkout', async (req, res) => {
-    const { id, selected, key } = req.body ?? {};
+    const { id, selected, key, shipping: suppliedShipping } = req.body ?? {};
+    const shipping = readJacketShipping(suppliedShipping);
+    if (!shipping) {
+      res.status(400).json({ error: 'Enter your email and shipping address.' });
+      return;
+    }
     const validSelection = Array.isArray(selected) && selected.length <= 10 &&
       selected.every((choice) => choice && typeof choice.name === 'string' &&
         typeof choice.label === 'string' && choice.name.length <= 100 && choice.label.length <= 100);
@@ -39,7 +45,7 @@ export function registerJacketShoppingRoutes(app: Express, shop = new ShopMcp())
       return;
     }
     try {
-      res.json(await shop.checkout(id, selected, key));
+      res.json(await shop.checkout(id, selected, key, shipping));
     } catch (error) {
       if (error instanceof RangeError) {
         res.status(409).json({ error: error.message });

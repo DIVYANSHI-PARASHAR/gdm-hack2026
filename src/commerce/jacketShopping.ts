@@ -1,5 +1,7 @@
 import type { Checkout, Selection, ShopProduct } from '../../server/shopMcp';
 import { jacketSize } from '../shared/jacketSizes';
+import type { JacketShipping } from '../shared/jacketShipping';
+import { MerchantCheckout, merchantWindow } from './merchantCheckout';
 import { JacketVoice } from './jacketVoice';
 
 type Results = {
@@ -55,6 +57,7 @@ export class JacketShopping {
   private products: ShopProduct[] = [];
   private selectedProduct?: ShopProduct;
   private prepareCheckout?: () => Promise<object>;
+  private merchantCheckout = new MerchantCheckout();
   private intro?: Promise<string>;
   private clearCaption = true;
   private voice = new JacketVoice(
@@ -114,7 +117,7 @@ export class JacketShopping {
         return this.chooseOptions(product, options);
       }
       if (name === 'prepare_checkout') {
-        if (!/\b(?:checkout|check out|buy|purchase|pay)\b/i.test(this.heardRequest)) {
+        if (!/\b(?:checkout|check out|buy|purchase|pay|open (?:it|that|this|the link)|open (?:the |merchant )?checkout)\b/i.test(this.heardRequest)) {
           return { error: 'A size request only selects a size. Ask whether the shopper wants to check out.' };
         }
         this.heardRequest = '';
@@ -136,7 +139,6 @@ export class JacketShopping {
     this.micLevel = root.querySelector<HTMLMeterElement>('[data-microphone-level]')!;
     this.micSelect = root.querySelector<HTMLSelectElement>('[data-microphone]')!;
     this.textForm = root.querySelector<HTMLFormElement>('[data-voice-text]')!;
-    root.querySelector<HTMLButtonElement>('[data-voice-send]')!.onclick = () => this.voice.submitVoice();
     this.micSelect.onchange = () => this.startVoice();
     this.textForm.onsubmit = (event) => {
       event.preventDefault();
@@ -170,7 +172,7 @@ export class JacketShopping {
     this.close();
     this.session = new AbortController();
     this.intro = this.search().then((result) =>
-      'Greet the shopper, explain the initial lookup outcome and offer to help pick a size. Current Shop results: ' +
+      'The live lookup finished. Briefly state the result and ask what size they want. Current Shop results: ' +
       JSON.stringify(result)
     );
     if (autoVoice) this.startVoice();
@@ -181,6 +183,7 @@ export class JacketShopping {
   }
 
   close() {
+    this.merchantCheckout.close();
     this.session?.abort();
     this.session = undefined;
     this.request?.abort();
@@ -220,8 +223,8 @@ export class JacketShopping {
       if (request.signal.aborted) return { error: 'Search replaced.' };
       this.products = data.products;
       const summary = {
-        exact: 'Shop found Kai’s exact Gucci jacket.',
-        similar: 'Shop couldn’t find Kai’s exact Gucci jacket. Here are similar jackets.',
+        exact: 'Exact match',
+        similar: 'Similar jackets',
         search: size ? `Similar jackets in size ${size}` : 'Live Shop results',
       }[data.match];
       this.results.replaceChildren(node('p', summary));
@@ -229,12 +232,12 @@ export class JacketShopping {
         if (message.type === 'warning' && message.content) this.results.append(node('p', message.content));
       }
       if (!data.products.length) this.results.append(node('p', 'No available jackets matched. Try another search.'));
-      const list = node('ol');
+      const list = node('ul');
       for (const product of data.products) {
         const offer = product.variants.find((variant) => variant.availability?.available)!;
         const item = node('li');
-        const title = link(product.title, offer.url) ?? node('strong', product.title);
-        const select = node('button', 'Choose options');
+        const title = link(product.title.replace(/ 722511[- ]ZALX2[- ]1043$/i, ''), offer.url) ?? node('strong', product.title);
+        const select = node('button', 'Select');
         select.type = 'button';
         select.className = 'btn btn-sm btn-outline-cyan';
         select.onclick = () => {
@@ -251,8 +254,9 @@ export class JacketShopping {
           image.loading = 'lazy';
           item.append(image);
         }
-        item.append(title, node('p', [offer.seller.name, money(offer.price.amount, offer.price.currency),
-          ...(offer.options ?? []).map((option) => option.label)].join(' · ')), select);
+        const listing = node('div');
+        listing.append(title, node('p', [offer.seller.name, money(offer.price.amount, offer.price.currency)].join(' · ')), select);
+        item.append(listing);
         list.append(item);
       }
       this.results.append(list);
@@ -281,7 +285,7 @@ export class JacketShopping {
           : 'Let me know if you want to check out.');
       this.caption.textContent = spokenNotice;
       this.clearCaption = true;
-      return { ...selection, spokenNotice };
+      return { ...selection, confirmedSize: requestedSize.label };
     }
     const note = `${product.title} is unavailable in size ${size.label}. Looking for similar jackets.`;
     this.caption.textContent = note;
@@ -292,7 +296,7 @@ export class JacketShopping {
         'I couldn’t find a similar jacket in that size.');
     this.caption.textContent = spokenNotice;
     this.clearCaption = true;
-    return { status: 'requested_size_unavailable', note, alternatives, spokenNotice };
+    return { status: 'requested_size_unavailable', note, alternatives };
   }
 
   private select(product: ShopProduct, suggested: Selection[]) {
@@ -304,7 +308,7 @@ export class JacketShopping {
     const controls = new Map<string, HTMLSelectElement>();
     const initial: Selection[] = [];
     const unavailableOptions: Selection[] = [];
-    form.append(node('strong', product.title));
+    form.append(node('strong', 'Selected jacket'));
     for (const option of product.options ?? []) {
       if (!option.values.length) continue;
       const label = node('label', option.name);
@@ -332,9 +336,10 @@ export class JacketShopping {
       if (select.value) initial.push({ name: option.name, label: select.value });
       controls.set(option.name, select);
       label.append(select);
+      label.hidden = !!select.value && option.values.length === 1;
       form.append(label);
     }
-    const checkout = node('button', 'Prepare merchant checkout');
+    const checkout = node('button', 'Checkout');
     checkout.className = 'btn btn-sm btn-primary';
     form.append(checkout, status);
     let key = crypto.randomUUID();
@@ -342,53 +347,47 @@ export class JacketShopping {
       key = crypto.randomUUID();
       status.replaceChildren();
     };
-    const prepareCheckout = async () => {
-      if (checkout.disabled) return { error: 'Checkout is already being prepared.' };
-      if (!form.reportValidity()) return { error: 'Choose all required options before checkout.' };
-      const selected = [...controls].map(([name, select]) => ({ name, label: select.value }));
+    const createCheckout = async (selected: Selection[], shipping: JacketShipping, popup: Window | null) => {
       checkout.disabled = true;
-      controls.forEach((select) => { select.disabled = true; });
-      status.textContent = 'Preparing checkout…';
+      this.merchantCheckout.loading();
       try {
         const data = await json<Checkout>('/api/jacket/checkout', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ id: product.id, selected, key }),
+          body: JSON.stringify({ id: product.id, selected, key, shipping }),
           signal: session.signal,
         });
-        if (session.signal.aborted || !form.isConnected) return { error: 'The selection changed.' };
-        const pay = link('Review and pay on merchant site ↗', data.continue_url);
-        if (!pay) throw new Error('The merchant did not provide a checkout link.');
-        status.textContent = '';
-        for (const total of data.totals ?? []) {
-          if (data.currency && typeof total.amount === 'number') {
-            status.append(node('span', `${total.display_text || total.type}: ${money(total.amount, data.currency)}`));
-          }
+        if (session.signal.aborted || !form.isConnected || !this.merchantCheckout.isOpen) {
+          popup?.close();
+          return { error: 'The selection changed.' };
         }
-        for (const message of data.messages ?? []) {
-          if (message.content) status.append(node('span', message.content));
-        }
-        for (const policy of data.links ?? []) {
-          const policyLink = link(policy.title || policy.type, policy.url);
-          if (policyLink) status.append(policyLink);
-        }
-        pay.onclick = () => {
-          if (this.voiceActive) this.voiceButton.click();
-        };
-        status.append(pay);
-        return { message: 'Merchant checkout is ready. Ask the shopper to open the review and pay link.', currency: data.currency, totals: data.totals };
+        popup = popup ?? merchantWindow();
+        this.merchantCheckout.show(data, popup, money);
+        return { message: 'Merchant checkout opened. The buyer reviews and pays there.', currency: data.currency, totals: data.totals };
       } catch (error) {
+        popup?.close();
         const message = error instanceof Error ? error.message : 'Checkout failed.';
-        if (!session.signal.aborted) status.textContent = message;
+        if (!session.signal.aborted) this.merchantCheckout.error(message);
         return { error: message };
       } finally {
         checkout.disabled = false;
-        controls.forEach((select) => { select.disabled = false; });
       }
+    };
+    const prepareCheckout = async (fromClick = false) => {
+      if (checkout.disabled) return { error: 'Checkout is already being prepared.' };
+      if (!form.reportValidity()) return { error: 'Choose all required options before checkout.' };
+      const selected = [...controls].map(([name, select]) => ({ name, label: select.value }));
+      const displayOptions = selected.filter((option) => option.name !== 'Target gender').map((option) => option.label);
+      this.merchantCheckout.open(product.title, displayOptions);
+      if (!this.merchantCheckout.shipping) {
+        this.merchantCheckout.delivery((shipping, popup) => void createCheckout(selected, shipping, popup));
+        return { message: 'Shipping form opened. The Malin Chelsea address is filled in. Ask the shopper to review it and enter their contact details.' };
+      }
+      return createCheckout(selected, this.merchantCheckout.shipping, fromClick ? merchantWindow() : null);
     };
     form.onsubmit = (event) => {
       event.preventDefault();
-      void prepareCheckout();
+      void prepareCheckout(true);
     };
     this.prepareCheckout = prepareCheckout;
     this.selectedProduct = product;

@@ -1191,31 +1191,6 @@ kbd {
   font-weight: 700;
 }
 
-.gucci-reference-card {
-  background: linear-gradient(135deg, rgba(200, 180, 150, 0.14), rgba(24, 90, 55, 0.16));
-  border: 1px solid rgba(200, 180, 150, 0.42);
-  border-radius: 10px;
-  padding: 12px;
-}
-
-.gucci-ref-title {
-  color: #fff;
-  font-size: 0.95rem;
-  margin: 0;
-}
-
-.gucci-ref-sub {
-  color: #cbd5e1;
-  font-size: 0.75rem;
-  margin: 4px 0 8px;
-}
-
-.gucci-ref-link {
-  color: #ffbe0b;
-  font-size: 0.85rem;
-  font-weight: 700;
-}
-
 #jacket-shopping {
   margin-top: 12px;
   font-size: 0.85rem;
@@ -1250,25 +1225,6 @@ kbd {
 
 .jacket-search input {
   flex: 1 1 9em;
-}
-
-[data-jacket-results] ol {
-  margin: 6px 0;
-  padding-left: 20px;
-}
-
-[data-jacket-results] li {
-  margin: 8px 0;
-  padding-bottom: 8px;
-  border-bottom: 1px solid var(--panel-border);
-}
-
-[data-jacket-results] img {
-  width: 44px;
-  height: 52px;
-  object-fit: cover;
-  float: right;
-  margin-left: 6px;
 }
 
 [data-jacket-selection] form,
@@ -1322,4 +1278,174 @@ kbd {
 
 .jacket-voice-input meter {
   width: 72px;
+}
+
+/* Shopping and merchant handoff use a quiet, light surface within the arena. */
+.shop-the-look-panel,
+.merchant-checkout {
+  color: #20241f;
+  background: #faf9f5;
+  border: 1px solid #deded2;
+  border-radius: 14px;
+  font-family: system-ui, sans-serif;
+}
+
+.shop-the-look-panel {
+  padding: 16px;
+}
+
+.shop-the-look-panel .shop-title,
+.shop-the-look-panel .icon-btn,
+.merchant-checkout .icon-btn {
+  color: #20241f;
+}
+
+.shop-the-look-panel .shop-header,
+.jacket-voice,
+[data-jacket-results] li {
+  border-bottom: 1px solid #deded2;
+  padding-bottom: 10px;
+}
+
+.jacket-tools {
+  margin-block: 10px;
+  font-size: 0.8rem;
+}
+
+.jacket-tools summary,
+.merchant-checkout summary {
+  cursor: pointer;
+  color: #49574a;
+}
+
+#jacket-shopping a,
+.merchant-checkout a {
+  color: #24513b;
+}
+
+#jacket-shopping .btn,
+.merchant-checkout button:not(.icon-btn),
+[data-checkout-link]:not([hidden]) {
+  background: #26533c;
+  border: 0;
+  border-radius: 7px;
+  color: #fff;
+  box-shadow: none;
+  cursor: pointer;
+}
+
+#jacket-shopping :is(input, select),
+.merchant-checkout input {
+  color: #20241f;
+  background: #fff;
+  border: 1px solid #cdd1c8;
+  border-radius: 6px;
+  min-width: 0;
+  padding: 7px;
+}
+
+[data-jacket-results] ul {
+  display: grid;
+  gap: 12px;
+  list-style: none;
+  margin: 8px 0 0;
+  padding: 0;
+}
+
+[data-jacket-results] li {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+}
+
+[data-jacket-results] li img {
+  flex: 0 0 70px;
+  width: 70px;
+  height: 86px;
+  object-fit: cover;
+  border-radius: 6px;
+  margin: 0;
+}
+
+[data-jacket-results] li a {
+  font-weight: 650;
+  text-decoration: none;
+}
+
+[data-jacket-selection] label[hidden] {
+  display: none;
+}
+
+[data-jacket-selection] form {
+  margin-block: 12px;
+}
+
+.merchant-checkout {
+  padding: 24px;
+  width: min(510px, calc(100% - 28px));
+  max-height: calc(100dvh - 28px);
+  overflow-y: auto;
+}
+
+.merchant-checkout::backdrop {
+  background: #121913ac;
+}
+
+.merchant-checkout header,
+[data-checkout-details] > div {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.merchant-checkout h2,
+.merchant-checkout h3 {
+  margin: 0;
+}
+
+[data-delivery-form]:not([hidden]) {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+
+[data-delivery-form] label {
+  display: grid;
+  gap: 4px;
+  font-size: 0.85rem;
+}
+
+[data-delivery-form] h3,
+[data-delivery-form] .wide {
+  grid-column: 1 / -1;
+}
+
+[data-checkout-link]:not([hidden]),
+[data-delivery-form] button {
+  display: block;
+  padding: 11px;
+  text-align: center;
+  text-decoration: none;
+}
+
+[data-checkout-link] {
+  margin-top: 14px;
+}
+
+[data-checkout-details] > a {
+  display: inline-block;
+  margin: 5px 10px 0 0;
+  font-size: 0.8rem;
+}
+
+[data-delivery-error]:empty,
+[data-jacket-selection] p:empty {
+  display: none;
+}
+
+.delivery-default {
+  margin: 0;
+  color: #49574a;
+  font-size: 0.85rem;
 }

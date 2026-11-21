@@ -163,19 +163,8 @@
 
         <section id="shop-the-look-panel" class="shop-the-look-panel hidden" aria-labelledby="outfit-title">
           <div class="shop-header">
-            <h3 id="outfit-title" class="shop-title">Kai’s jacket</h3>
+            <h3 id="outfit-title" class="shop-title">Shop Kai’s look</h3>
             <button id="btn-close-outfit" type="button" class="icon-btn" aria-label="Close outfit panel">✕</button>
-          </div>
-          <div class="gucci-reference-card">
-            <h4 class="gucci-ref-title">Gucci Reversible GG Canvas Jacket</h4>
-            <p class="gucci-ref-sub">Style 722511 ZALX2 1043</p>
-            <a
-              id="gucci-ref-link"
-              href="https://www.gucci.com/us/en/pr/men/ready-to-wear-for-men/outerwear-for-men/bombers-for-men/reversible-gg-canvas-jacket-p-722511ZALX21043"
-              target="_blank"
-              rel="noopener noreferrer"
-              class="gucci-ref-link"
-            >View on Gucci.com ↗</a>
           </div>
           <div id="jacket-shopping">
             <div class="jacket-voice">
@@ -183,25 +172,58 @@
               <button data-voice-button type="button" class="btn btn-sm btn-outline-cyan">Start voice</button>
             </div>
             <div class="jacket-voice-input" data-voice-input hidden>
-              <label>Microphone <select data-microphone><option value="">System default</option></select></label>
+              <select data-microphone aria-label="Microphone"><option value="">System default</option></select>
               <meter data-microphone-level min="0" max="100" value="0" aria-label="Microphone input level"></meter>
-              <button data-voice-send type="button" class="btn btn-sm btn-outline-cyan">Send voice reply</button>
             </div>
-            <p data-voice-heard></p>
-            <p data-voice-caption></p>
-            <form class="jacket-search" data-voice-text hidden>
-              <input maxlength="240" aria-label="Type a reply to Gemini" placeholder="Or type your reply">
-              <button type="submit" class="btn btn-sm btn-outline-cyan">Send</button>
-            </form>
-            <form class="jacket-search" data-jacket-search>
-              <input type="search" maxlength="240" aria-label="Search live Shop jackets" placeholder="Search jackets on Shop">
-              <button type="submit" class="btn btn-sm btn-outline-cyan">Search</button>
-            </form>
+            <details class="jacket-tools">
+              <summary>More options</summary>
+              <a href="https://www.gucci.com/us/en/pr/men/ready-to-wear-for-men/outerwear-for-men/bombers-for-men/reversible-gg-canvas-jacket-p-722511ZALX21043" target="_blank" rel="noopener noreferrer">Gucci reference ↗</a>
+              <p data-voice-heard></p>
+              <p data-voice-caption></p>
+              <form class="jacket-search" data-voice-text hidden>
+                <input maxlength="240" aria-label="Type a reply to Gemini" placeholder="Or type your reply">
+                <button type="submit" class="btn btn-sm btn-outline-cyan">Send</button>
+              </form>
+              <form class="jacket-search" data-jacket-search>
+                <input type="search" maxlength="240" aria-label="Search live Shop jackets" placeholder="Search jackets on Shop">
+                <button type="submit" class="btn btn-sm btn-outline-cyan">Search</button>
+              </form>
+            </details>
             <div data-jacket-selection></div>
             <div data-jacket-results aria-live="polite"></div>
           </div>
         </section>
       </aside>
+
+      <dialog id="merchant-checkout" class="merchant-checkout" aria-labelledby="merchant-checkout-title">
+        <header>
+          <h2 id="merchant-checkout-title">Checkout</h2>
+          <button data-checkout-close class="icon-btn" type="button" aria-label="Close checkout">✕</button>
+        </header>
+        <p data-checkout-item></p>
+        <form data-delivery-form autocomplete="on" hidden>
+          <h3>Delivery</h3>
+          <p class="wide delivery-default">The Malin Chelsea · Edit if needed</p>
+          <label class="wide">Email<input type="email" name="email" autocomplete="email" required></label>
+          <label>First name<input name="first_name" autocomplete="shipping given-name" required></label>
+          <label>Last name<input name="last_name" autocomplete="shipping family-name" required></label>
+          <label class="wide">Address<input name="street_address" autocomplete="shipping street-address" required></label>
+          <label>City<input name="address_locality" autocomplete="shipping address-level2" required></label>
+          <label>State / region<input name="address_region" autocomplete="shipping address-level1" required></label>
+          <label>Postal code<input name="postal_code" autocomplete="shipping postal-code" required></label>
+          <label>Country code<input name="address_country" autocomplete="shipping country" placeholder="US" maxlength="2" required></label>
+          <p class="wide" data-delivery-error role="status"></p>
+          <button class="wide" type="submit">Open merchant checkout</button>
+        </form>
+        <section data-checkout-summary hidden>
+          <p data-checkout-status role="status"></p>
+          <details>
+            <summary>Order details &amp; policies</summary>
+            <div data-checkout-details></div>
+          </details>
+          <a data-checkout-link target="_blank" rel="noopener noreferrer" hidden>Open merchant checkout ↗</a>
+        </section>
+      </dialog>
 
       <!-- Non-blocking Match Result Panel (Docked Right — Pure Game State) -->
       <aside id="screen-result" class="result-panel hidden" aria-label="Match Results">

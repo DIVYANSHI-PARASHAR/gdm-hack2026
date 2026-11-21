@@ -1,3 +1,4 @@
+import { defaultJacketAddress, readJacketShipping } from '../src/shared/jacketShipping';
 import { describe, expect, it, vi } from 'vitest';
 import { GUCCI_URL, ShopMcp } from '../server/shopMcp';
 
@@ -87,6 +88,24 @@ describe('live Shop MCP jacket discovery and checkout', () => {
       },
     });
     expect(request).toHaveBeenCalledTimes(2);
+  });
+
+  it('prefills the Chelsea delivery address and sends buyer contact without replacing the merchant URL', async () => {
+    const shipping = readJacketShipping({
+      ...defaultJacketAddress, first_name: 'Demo', last_name: 'Buyer', email: 'demo@example.com',
+    });
+    const { shop, call } = mockShop({ product }, { continue_url: continueUrl });
+    expect(shipping?.street_address).toBe('270 7th Ave');
+    expect(readJacketShipping(defaultJacketAddress)).toBeUndefined();
+    expect((await shop.checkout(product.id, [{ name: 'Size', label: 'M' }], undefined, shipping)).continue_url).toBe(continueUrl);
+    expect(call(1).arguments.checkout).toMatchObject({
+      buyer: { email: 'demo@example.com', first_name: 'Demo', last_name: 'Buyer' },
+      context: { address_country: 'US' },
+      fulfillment: { methods: [{
+        type: 'shipping', selected_destination_id: 'buyer-shipping',
+        destinations: [{ ...defaultJacketAddress, id: 'buyer-shipping' }],
+      }] },
+    });
   });
 
   it.each([[], [{ name: 'Size', label: 'L' }]])('rejects missing or substituted variant options', async (...choices) => {
